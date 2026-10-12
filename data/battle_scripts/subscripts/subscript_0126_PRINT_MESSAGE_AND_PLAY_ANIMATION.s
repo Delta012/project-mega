@@ -5,9 +5,7 @@
 
 _000:
     CompareVarToValue OPCODE_NEQ, BSCRIPT_VAR_SIDE_EFFECT_TYPE, SIDE_EFFECT_TYPE_DIRECT, _009
-    PrintAttackMessage 
-    Wait 
-    PlayMoveAnimation BATTLER_CATEGORY_ATTACKER
+    PrintAttackMessageAndPlayMoveAnimation
     Wait 
 
 _009:

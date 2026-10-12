@@ -4,8 +4,6 @@
 .data
 
 _000:
-    PrintAttackMessage 
-    Wait 
-    PlayMoveAnimation BATTLER_CATEGORY_ATTACKER
-    Wait 
+    PrintAttackMessageAndPlayMoveAnimation
+    Wait
     End 

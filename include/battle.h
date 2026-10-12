@@ -3800,4 +3800,6 @@ BOOL LONG_CALL sub_02017068(void *animManager, int battlerId);
 void LONG_CALL *ov12_0223B750(struct BattleSystem *battleSystem);
 void LONG_CALL ov12_022600F0(SysTask *task, void *data); // Task_PlayFaintingSequence
 
+void LONG_CALL BattleController_EmitPrintAttackMessageAndPlayMoveAnimation(struct BattleSystem *bw, struct BattleStruct *sp);
+
 #endif // BATTLE_H
