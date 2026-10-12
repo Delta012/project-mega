@@ -180,7 +180,6 @@ u32 LoadCaptureSuccessSPAStarEmitter(u32 id);
 u32 LoadCaptureSuccessSPANumEmitters(u32 id);
 void LONG_CALL UpdateFriendshipFainted(struct BattleSystem *battleSystem, struct BattleStruct *ctx, int battlerId);
 BOOL btl_scr_cmd_HandleFrostbite(void *bsys UNUSED, struct BattleStruct *ctx);
-BOOL btl_scr_cmd_PrintAttackMessageAndPlayMoveAnimation(void *bsys, struct BattleStruct *ctx);
 
 #ifdef DEBUG_BATTLE_SCRIPT_COMMANDS
 #pragma GCC diagnostic push
@@ -487,7 +486,6 @@ const u8 *BattleScrCmdNames[] = {
     "GoToIfMoveConditionFlagSet",
     // "YourCustomCommand",
     "HandleFrostbite",
-    "PrintAttackMessageAndPlayMoveAnimation",
 };
 
 u32 cmdAddress = 0;
@@ -574,7 +572,6 @@ const btl_scr_cmd_func NewBattleScriptCmdTable[] = {
     [0x12A - START_OF_NEW_BTL_SCR_CMDS] = btl_scr_cmd_12A_GoToIfMoveConditionFlagSet,
     // [BASE_ENGINE_BTL_SCR_CMDS_MAX - START_OF_NEW_BTL_SCR_CMDS + 1] = btl_scr_cmd_custom_01_your_custom_command,
     [BASE_ENGINE_BTL_SCR_CMDS_MAX - START_OF_NEW_BTL_SCR_CMDS + 1] = btl_scr_cmd_HandleFrostbite,
-    [BASE_ENGINE_BTL_SCR_CMDS_MAX - START_OF_NEW_BTL_SCR_CMDS + 1] = btl_scr_cmd_PrintAttackMessageAndPlayMoveAnimation,
 };
 
 // clang-format on
@@ -5879,65 +5876,6 @@ BOOL btl_scr_cmd_12A_GoToIfMoveConditionFlagSet(void *bsys, struct BattleStruct 
         break;
     default:
         break;
-    }
-
-    return FALSE;
-}
-
-// AI CODE
-
-//*//
-//*  @brief Returns whether the move animation for `move` should be queued right now.
-//*         Same condition btl_scr_cmd_17_playanimation uses: animations must be enabled
-//*         and not already played this move, except for moves that must always animate.
-//*//
-static BOOL ShouldQueueMoveAnimation(void *bsys, struct BattleStruct *ctx, u16 move)
-{
-    if (move == MOVE_TRANSFORM || move == MOVE_470 || move == MOVE_ELECTRIC_TERRAIN || move == MOVE_MISTY_TERRAIN || move == MOVE_GRASSY_TERRAIN || move == MOVE_PSYCHIC_TERRAIN) {
-        return TRUE;
-    }
-
-    return (ctx->server_status_flag & SERVER_STATUS_FLAG_ANIMATION_IS_PLAYING) == 0 && CheckBattleAnimationsOption(bsys) == TRUE;
-}
-
-// *///
-// *  @brief Port of pokecustomemerald's `attackstringandanimation`.
-// *
-// *  Prints the attack message ("X used Y!") and queues the move animation in one
-// *  script command, instead of PrintAttackMessage / Wait / PlayMoveAnimation / Wait.
-// *  - The message is only printed if it has not been printed already this move
-// *    (BATTLE_STATUS_NO_ATTACK_MESSAGE), exactly like BtlCmd_PrintAttackMessage.
-// *  - The animation follows btl_scr_cmd_17_playanimation's rules: it is skipped when one
-// *    is already playing (spread moves animate once) or animations are off, and Transform
-// *    and the terrain moves always animate.
-// *  - With animations off, the usual WAIT_MOVE_ANIMATION subscript is called so the
-// *    message stays on screen long enough to read.
-// *
-// *  Always animates sp->current_move_index; takes no arguments.
-// *
-// *  @param bsys battle system
-// *  @param ctx battle context
-// *  @return FALSE
-// *//
-BOOL btl_scr_cmd_PrintAttackMessageAndPlayMoveAnimation(void *bsys, struct BattleStruct *ctx)
-{
-    IncrementBattleScriptPtr(ctx, 1);
-
-    u16 move = ctx->current_move_index;
-
-    if (!(ctx->server_status_flag & BATTLE_STATUS_NO_ATTACK_MESSAGE)) {
-        BattleController_EmitPrintAttackMessage(bsys, ctx);
-    }
-    ctx->server_status_flag |= BATTLE_STATUS_NO_ATTACK_MESSAGE;
-    ctx->server_status_flag2 |= BATTLE_STATUS2_DISPLAY_ATTACK_MESSAGE;
-
-    if (ShouldQueueMoveAnimation(bsys, ctx, move)) {
-        ctx->server_status_flag |= SERVER_STATUS_FLAG_ANIMATION_IS_PLAYING;
-        SCIO_QueueMoveAnimation(bsys, ctx, move);
-    }
-
-    if (CheckBattleAnimationsOption(bsys) == FALSE) {
-        SkillSequenceGosub(ctx, 1, BATTLE_SUBSCRIPT_WAIT_MOVE_ANIMATION);
     }
 
     return FALSE;

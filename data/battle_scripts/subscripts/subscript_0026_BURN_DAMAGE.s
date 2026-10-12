@@ -14,8 +14,6 @@ _020:
     UpdateVar OPCODE_MUL, BSCRIPT_VAR_HP_CALC, -1
     // {0} was hurt by its burn!
     PrintMessage 95, TAG_NICKNAME, BATTLER_CATEGORY_MSG_TEMP
-    Wait 
-    WaitButtonABTime 30
     PlayBattleAnimation BATTLER_CATEGORY_MSG_TEMP, BATTLE_ANIMATION_BURNED
     Wait 
     UpdateVar OPCODE_FLAG_ON, BSCRIPT_VAR_BATTLE_STATUS, BATTLE_STATUS_NO_BLINK
@@ -23,4 +21,4 @@ _020:
     Call BATTLE_SUBSCRIPT_SWITCH_IN_ABILITY_CHECK
 
 _041:
-    End 
+    End
