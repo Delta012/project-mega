@@ -280,4 +280,9 @@
 // #define BUILD_DUMPED_EVENTDATA
 // #define BUILD_DUMPED_SCR_SEQ
 
+// ACCELERATED_GAME_CLOCK detaches in-game time of day from real time. Morning/day/night encounters, time-based evolutions,
+// the overworld tint and area music all follow the accelerated clock.  Dates, weekdays and seasons still follow the real calendar.
+// Comment out ACCELERATED_GAME_CLOCK to use the real time of day.
+#define ACCELERATED_GAME_CLOCK
+
 #endif
