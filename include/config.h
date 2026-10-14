@@ -280,9 +280,14 @@
 // #define BUILD_DUMPED_EVENTDATA
 // #define BUILD_DUMPED_SCR_SEQ
 
-// ACCELERATED_GAME_CLOCK detaches in-game time of day from real time. Morning/day/night encounters, time-based evolutions,
-// the overworld tint and area music all follow the accelerated clock.  Dates, weekdays and seasons still follow the real calendar.
-// Comment out ACCELERATED_GAME_CLOCK to use the real time of day.
-#define ACCELERATED_GAME_CLOCK
+// Configurable in-game clock cycles by editing GAME_CLOCK_*_MINUTES options.
+// You can set how many real minutes each cycle lasts (min 1).
+// A full in-game day lasts as long as the four added together. The default duration of a day is of 72 minutes.
+// You can configure the starting game cycle by editing GAME_CLOCK_NEW_GAME_CYCLE: 0 = morning, 1 = day, 2 = evening, 3 = night. By default, it stats at 10 AM (1).
+#define GAME_CLOCK_MORNING_MINUTES 18
+#define GAME_CLOCK_DAY_MINUTES 18
+#define GAME_CLOCK_EVENING_MINUTES 3
+#define GAME_CLOCK_NIGHT_MINUTES 33
+#define GAME_CLOCK_NEW_GAME_CYCLE 1
 
 #endif

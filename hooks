@@ -659,15 +659,9 @@ arm9 EncounterSlot_WildMonSlotRoll_Headbutt 022477C0 0
 
 arm9 FieldSystem_RestoreMapObjectsFromSave 0203B9F4 1
 
-#ifdef ACCELERATED_GAME_CLOCK
-# the time of day comes from the accelerated game clock
-# GF_RTC_CopyTime: replaced whole (0x34 bytes available)
-arm9 GF_RTC_CopyTime_Accelerated 0201474C
-# GF_RTC_TimeToSec: area light / overworld tint
-arm9 GF_RTC_TimeToSec_Accelerated 020147A4 0
-# Field_GetTimeOfDay: battle backgrounds, scripts, npc trades
-arm9 Field_GetTimeOfDay_Accelerated 020555E0 1
-# Field_GetTimeOfDayWildParam: trainer phone rematches
-arm9 Field_GetTimeOfDayWildParam_Accelerated 020555F0 1
-# Field_GetHour: scripts that check the exact hour
-arm9 Field_GetHour_Accelerated 02055618 1
+# detached in-game clock
+arm9 GF_RTC_CopyTime_Detached 0201474C
+arm9 GF_RTC_TimeToSec_Detached 020147A4 0
+arm9 Field_GetTimeOfDay_Detached 020555E0 1
+arm9 Field_GetTimeOfDayWildParam_Detached 020555F0 1
+arm9 Field_GetHour_Detached 02055618 1
