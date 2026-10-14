@@ -664,4 +664,6 @@ arm9 GF_RTC_CopyTime_Detached 0201474C
 arm9 GF_RTC_TimeToSec_Detached 020147A4 0
 arm9 Field_GetTimeOfDay_Detached 020555E0 1
 arm9 Field_GetTimeOfDayWildParam_Detached 020555F0 1
+arm9 Field_RegrowApricornTrees_Detached 020556B8 1
+0017 BerryPots_UpdateGrowth_Detached 022037C8 2
 arm9 Field_GetHour_Detached 02055618 1

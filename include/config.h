@@ -103,7 +103,7 @@
 
 // DISABLE_END_OF_TURN_WEATHER_MESSAGE removes the weather messages at the end of the turn.  instead the bottom screen icon can be used
 // uncomment the line out to get this functionality
-#define DISABLE_END_OF_TURN_WEATHER_MESSAGE
+// #define DISABLE_END_OF_TURN_WEATHER_MESSAGE
 
 // IMPLEMENT_SEASONS currently implements season mechanics. Used for changing forms of Deerling and Sawsbuck.
 // Comment the line out to disable this functionality (Gen 6+)
@@ -283,11 +283,16 @@
 // Configurable in-game clock cycles by editing GAME_CLOCK_*_MINUTES options.
 // You can set how many real minutes each cycle lasts (min 1).
 // A full in-game day lasts as long as the four added together. The default duration of a day is of 72 minutes.
-// You can configure the starting game cycle by editing GAME_CLOCK_NEW_GAME_CYCLE: 0 = morning, 1 = day, 2 = evening, 3 = night. By default, it stats at 10 AM (1).
+// It's possible to configure the starting game cycle by editing GAME_CLOCK_NEW_GAME_CYCLE: 0 = morning, 1 = day, 2 = evening, 3 = night. By default, it stats at 10 AM (1).
+// It's possible to configure GAME_CLOCK_APRICORN_REGROW_DAYS to make apricorns grow as fast as you like. By default, apricorns respawn every four in-game days (~5 hours)
+// It's possible to configure BERRY_BASE_DAYS to make grow as fast as you like. By default, berries have a base grow timer of four in-game days,
+// multiplied by a modifier calculated based on their vanilla grow timer. 
 #define GAME_CLOCK_MORNING_MINUTES 18
 #define GAME_CLOCK_DAY_MINUTES 18
 #define GAME_CLOCK_EVENING_MINUTES 3
 #define GAME_CLOCK_NIGHT_MINUTES 33
 #define GAME_CLOCK_NEW_GAME_CYCLE 1
+#define GAME_CLOCK_APRICORN_REGROW_DAYS 4
+#define BERRY_BASE_DAYS 4
 
 #endif
