@@ -660,7 +660,6 @@ arm9 EncounterSlot_WildMonSlotRoll_Headbutt 022477C0 0
 arm9 FieldSystem_RestoreMapObjectsFromSave 0203B9F4 1
 
 # detached in-game clock
-arm9 GF_RTC_CopyTime_Detached 0201474C
 arm9 GF_RTC_TimeToSec_Detached 020147A4 0
 arm9 Field_GetTimeOfDay_Detached 020555E0 1
 arm9 Field_GetTimeOfDayWildParam_Detached 020555F0 1
