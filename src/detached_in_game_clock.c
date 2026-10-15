@@ -6,30 +6,28 @@
 #include "system.h"
 
 // Detached in-game clock: the time of day follows the play time instead of the real clock, like in the latest generations.
-// Dates, weekdays and seasons still follow the real calendar. The clock only advances while the game is running and it is stored in the save.
+// Dates, weekdays and seasons still follow the real calendar, and the real season changes how long every cycle lasts (see config.h).
+// The clock only advances while the game is running and it is stored in the save.
 // Apricorn trees and Berry Pots grow with the same clock (see config.h for BERRY_REGROW_DAYS and APRICORN_REGROW_DAYS).
 
 // Save variables. None of them is referenced by the vanilla scripts.
-#define GAME_CLOCK_ELAPSED_SECONDS_VAR 0x40E4                               // seconds of play inside the current cycle
+#define GAME_CLOCK_ELAPSED_SECONDS_VAR 0x40E4                               // seconds of play inside the current loop
 #define GAME_CLOCK_VARS_BASE           0x4059
 #define GAME_CLOCK_APRICORN_DAYS_VAR   GAME_CLOCK_VARS_BASE                 // in-game days since the apricorn trees regrew
 #define GAME_CLOCK_BERRY_CLOCK_VAR     (GAME_CLOCK_VARS_BASE + 1)           // 2 vars: seconds of play since the new game
 #define GAME_CLOCK_BERRY_STAMP_VAR     (GAME_CLOCK_VARS_BASE + 3)           // 2 vars per pot: berry clock at the pot's last update
-#define GAME_CLOCK_VARS_END            (GAME_CLOCK_BERRY_STAMP_VAR + MAX_BERRY_POT * 2)
+#define GAME_CLOCK_SEASON_VAR          (GAME_CLOCK_BERRY_STAMP_VAR + MAX_BERRY_POT * 2) // season of the current loop + 1 (0 = not set yet)
+#define GAME_CLOCK_VARS_END            (GAME_CLOCK_SEASON_VAR + 1)
 
 #define SECONDS_PER_DAY 86400
 
-#define MORNING_SECONDS (GAME_CLOCK_MORNING_MINUTES * 60)
-#define DAY_SECONDS     (GAME_CLOCK_DAY_MINUTES * 60)
-#define EVENING_SECONDS (GAME_CLOCK_EVENING_MINUTES * 60)
-#define NIGHT_SECONDS   (GAME_CLOCK_NIGHT_MINUTES * 60)
+// Real seconds a whole loop (morning + day + evening + night) lasts in a season
+#define SEASON_LOOP_SECONDS(season) ((GAME_CLOCK_##season##_MORNING_MINUTES + GAME_CLOCK_##season##_DAY_MINUTES \
+                                    + GAME_CLOCK_##season##_EVENING_MINUTES + GAME_CLOCK_##season##_NIGHT_MINUTES) * 60)
 
-#define COMPLETE_CYCLES_SECONDS (MORNING_SECONDS + DAY_SECONDS + EVENING_SECONDS + NIGHT_SECONDS)
-
-// Seconds of play before the cycle the new game starts at
-#define NEW_GAME_OFFSET_SECONDS ((GAME_CLOCK_NEW_GAME_CYCLE > 0 ? MORNING_SECONDS : 0) \
-                               + (GAME_CLOCK_NEW_GAME_CYCLE > 1 ? DAY_SECONDS : 0)     \
-                               + (GAME_CLOCK_NEW_GAME_CYCLE > 2 ? EVENING_SECONDS : 0))
+// Real seconds of every cycle in a season
+#define SEASON_CYCLE_SECONDS(season) { GAME_CLOCK_##season##_MORNING_MINUTES * 60, GAME_CLOCK_##season##_DAY_MINUTES * 60, \
+                                       GAME_CLOCK_##season##_EVENING_MINUTES * 60, GAME_CLOCK_##season##_NIGHT_MINUTES * 60 }
 
 // The vanilla growth time of a berry is its hours * 60 minutes
 #define BERRY_MINUTES_PER_HOUR 60
@@ -45,34 +43,76 @@ enum DailyClockCycles {
     CLOCK_CYCLE_COUNT,
 };
 
+enum ClockSeasons {
+    CLOCK_SEASON_SPRING,
+    CLOCK_SEASON_SUMMER,
+    CLOCK_SEASON_AUTUMN,
+    CLOCK_SEASON_WINTER,
+    CLOCK_SEASON_COUNT,
+};
+
 // A bad value in config.h fails the build instead of breaking the game
 #define CLOCK_STATIC_ASSERT(name, condition) typedef char name[(condition) ? 1 : -1]
 
-CLOCK_STATIC_ASSERT(ClockCyclesNotEmpty, MORNING_SECONDS > 0 && DAY_SECONDS > 0 && EVENING_SECONDS > 0 && NIGHT_SECONDS > 0);
+#define SEASON_CYCLES_VALID(season) (GAME_CLOCK_##season##_MORNING_MINUTES > 0 && GAME_CLOCK_##season##_DAY_MINUTES > 0 \
+                                  && GAME_CLOCK_##season##_EVENING_MINUTES > 0 && GAME_CLOCK_##season##_NIGHT_MINUTES > 0)
+
+CLOCK_STATIC_ASSERT(SpringCyclesNotEmpty, SEASON_CYCLES_VALID(SPRING));
+CLOCK_STATIC_ASSERT(SummerCyclesNotEmpty, SEASON_CYCLES_VALID(SUMMER));
+CLOCK_STATIC_ASSERT(AutumnCyclesNotEmpty, SEASON_CYCLES_VALID(AUTUMN));
+CLOCK_STATIC_ASSERT(WinterCyclesNotEmpty, SEASON_CYCLES_VALID(WINTER));
+CLOCK_STATIC_ASSERT(SpringLoopFitsInVar, SEASON_LOOP_SECONDS(SPRING) <= 0xFFFF);
+CLOCK_STATIC_ASSERT(SummerLoopFitsInVar, SEASON_LOOP_SECONDS(SUMMER) <= 0xFFFF);
+CLOCK_STATIC_ASSERT(AutumnLoopFitsInVar, SEASON_LOOP_SECONDS(AUTUMN) <= 0xFFFF);
+CLOCK_STATIC_ASSERT(WinterLoopFitsInVar, SEASON_LOOP_SECONDS(WINTER) <= 0xFFFF);
 CLOCK_STATIC_ASSERT(ClockNewGameCycleValid, GAME_CLOCK_NEW_GAME_CYCLE >= 0 && GAME_CLOCK_NEW_GAME_CYCLE < CLOCK_CYCLE_COUNT);
-CLOCK_STATIC_ASSERT(ClockCycleFitsInVar, COMPLETE_CYCLES_SECONDS <= 0xFFFF);
 CLOCK_STATIC_ASSERT(ClockVarsInSaveRange, GAME_CLOCK_VARS_BASE >= 0x4020 && GAME_CLOCK_VARS_END - 1 <= 0x416F);
 CLOCK_STATIC_ASSERT(ClockVarsDistinct, GAME_CLOCK_ELAPSED_SECONDS_VAR < GAME_CLOCK_VARS_BASE || GAME_CLOCK_ELAPSED_SECONDS_VAR >= GAME_CLOCK_VARS_END);
 CLOCK_STATIC_ASSERT(ApricornRegrowDaysValid, APRICORN_REGROW_DAYS >= 1 && APRICORN_REGROW_DAYS <= 0xFFFF);
 CLOCK_STATIC_ASSERT(BerryRegrowDaysValid, BERRY_REGROW_DAYS >= 1);
 
 struct ClockCycle {
-    u32 CycleSeconds;           // How many seconds a cycle lasts
     u32 CycleStartSecond;       // At which in-game second a cycle starts at
     u32 CycleInGameSeconds;     // How many in-game seconds a cycle lasts
 };
 
 // Makes sure the in-game time does match with day tables, so the tint, music and encounters are correctly changed with the new cycles
 static const struct ClockCycle sClockCycles[CLOCK_CYCLE_COUNT] = {
-    [CLOCK_CYCLE_MORNING] = { MORNING_SECONDS,  4 * 3600,  6 * 3600 }, // 04:00 - 10:00
-    [CLOCK_CYCLE_DAY]     = { DAY_SECONDS,     10 * 3600,  7 * 3600 }, // 10:00 - 17:00
-    [CLOCK_CYCLE_EVENING] = { EVENING_SECONDS, 17 * 3600,  3 * 3600 }, // 17:00 - 20:00
-    [CLOCK_CYCLE_NIGHT]   = { NIGHT_SECONDS,   20 * 3600,  8 * 3600 }, // 20:00 - 04:00
+    [CLOCK_CYCLE_MORNING] = {  4 * 3600,  6 * 3600 }, // 04:00 - 10:00
+    [CLOCK_CYCLE_DAY]     = { 10 * 3600,  7 * 3600 }, // 10:00 - 17:00
+    [CLOCK_CYCLE_EVENING] = { 17 * 3600,  3 * 3600 }, // 17:00 - 20:00
+    [CLOCK_CYCLE_NIGHT]   = { 20 * 3600,  8 * 3600 }, // 20:00 - 04:00
+};
+
+// How many real seconds every cycle lasts in every season
+static const u16 sSeasonCycleSeconds[CLOCK_SEASON_COUNT][CLOCK_CYCLE_COUNT] = {
+    [CLOCK_SEASON_SPRING] = SEASON_CYCLE_SECONDS(SPRING),
+    [CLOCK_SEASON_SUMMER] = SEASON_CYCLE_SECONDS(SUMMER),
+    [CLOCK_SEASON_AUTUMN] = SEASON_CYCLE_SECONDS(AUTUMN),
+    [CLOCK_SEASON_WINTER] = SEASON_CYCLE_SECONDS(WINTER),
+};
+
+static const u16 sSeasonLoopSeconds[CLOCK_SEASON_COUNT] = {
+    [CLOCK_SEASON_SPRING] = SEASON_LOOP_SECONDS(SPRING),
+    [CLOCK_SEASON_SUMMER] = SEASON_LOOP_SECONDS(SUMMER),
+    [CLOCK_SEASON_AUTUMN] = SEASON_LOOP_SECONDS(AUTUMN),
+    [CLOCK_SEASON_WINTER] = SEASON_LOOP_SECONDS(WINTER),
+};
+
+// Seasons by month (index 1-12), meteorological seasons of the northern hemisphere
+static const u8 sSeasonOfMonth[13] = {
+    CLOCK_SEASON_WINTER,                                                        // unused
+    CLOCK_SEASON_WINTER, CLOCK_SEASON_WINTER,                                   // Jan, Feb
+    CLOCK_SEASON_SPRING, CLOCK_SEASON_SPRING, CLOCK_SEASON_SPRING,              // Mar, Apr, May
+    CLOCK_SEASON_SUMMER, CLOCK_SEASON_SUMMER, CLOCK_SEASON_SUMMER,              // Jun, Jul, Aug
+    CLOCK_SEASON_AUTUMN, CLOCK_SEASON_AUTUMN, CLOCK_SEASON_AUTUMN,              // Sep, Oct, Nov
+    CLOCK_SEASON_WINTER,                                                        // Dec
 };
 
 static u32 sLastVblank;
 static u32 sFrameRemainder;
 static u32 sLastGameSecond = SECONDS_PER_DAY; // SECONDS_PER_DAY = no second seen yet
+static u32 sLoopSeason;                       // season the current loop uses, updated by GetCycleElapsedSeconds
 static BOOL sTickReady;
 
 static u32 GetVar32(u16 var)
@@ -86,17 +126,48 @@ static void SetVar32(u16 var, u32 value)
     SetScriptVar(var + 1, value >> 16);
 }
 
-// Seconds of play elapsed in the current cycle, counted from a new game
+// Season of the real calendar
+static u32 GetRealSeason(void)
+{
+    struct RTCDate date;
+
+    GF_RTC_CopyDate(&date);
+
+    if (date.month < 1 || date.month > 12) {
+        return CLOCK_SEASON_SPRING;
+    }
+
+    return sSeasonOfMonth[date.month];
+}
+
+// Season used by the loop that is running. It is saved, so a loop keeps its season until it is over
+static u32 GetLoopSeason(void)
+{
+    u32 stored = GetScriptVar(GAME_CLOCK_SEASON_VAR);
+
+    if (stored == 0 || stored > CLOCK_SEASON_COUNT) {
+        stored = GetRealSeason() + 1;
+        SetScriptVar(GAME_CLOCK_SEASON_VAR, stored);
+    }
+
+    return stored - 1;
+}
+
+// Seconds of play elapsed in the current loop, counted from the start of the new game cycle.
+// A loop is always 24 in-game hours, so changing the season when it ends does not make the time jump
 static u32 GetCycleElapsedSeconds(void)
 {
     u32 now = gSystem.vblankCounter;
+    u32 loopSeconds;
     u32 elapsedSeconds;
 
     if (SaveBlock2_get() == NULL) {
         return 0;
     }
 
-    elapsedSeconds = GetScriptVar(GAME_CLOCK_ELAPSED_SECONDS_VAR) % COMPLETE_CYCLES_SECONDS;
+    sLoopSeason = GetLoopSeason();
+    loopSeconds = sSeasonLoopSeconds[sLoopSeason];
+    elapsedSeconds = GetScriptVar(GAME_CLOCK_ELAPSED_SECONDS_VAR) % loopSeconds;
 
     if (sTickReady && now > sLastVblank) {
         u32 seconds;
@@ -106,8 +177,17 @@ static u32 GetCycleElapsedSeconds(void)
         sFrameRemainder %= FRAMES_PER_SECOND;
 
         if (seconds != 0) {
-            elapsedSeconds = (elapsedSeconds + seconds) % COMPLETE_CYCLES_SECONDS;
+            elapsedSeconds += seconds;
+
+            // a loop is over: the next one uses the season it is now
+            while (elapsedSeconds >= loopSeconds) {
+                elapsedSeconds -= loopSeconds;
+                sLoopSeason = GetRealSeason();
+                loopSeconds = sSeasonLoopSeconds[sLoopSeason];
+            }
+
             SetScriptVar(GAME_CLOCK_ELAPSED_SECONDS_VAR, elapsedSeconds);
+            SetScriptVar(GAME_CLOCK_SEASON_VAR, sLoopSeason + 1);
             SetVar32(GAME_CLOCK_BERRY_CLOCK_VAR, GetVar32(GAME_CLOCK_BERRY_CLOCK_VAR) + seconds);
         }
     }
@@ -153,19 +233,22 @@ static void UpdateApricornTrees(u32 gameSecond)
 // In-game second of a day (0-86399)
 static u32 GetGameSecondOfDay(void)
 {
-    u32 elapsedSeconds = (GetCycleElapsedSeconds() + NEW_GAME_OFFSET_SECONDS) % COMPLETE_CYCLES_SECONDS;
+    u32 elapsedSeconds = GetCycleElapsedSeconds();
     u32 gameSecond = 0;
     int i;
 
+    // the loop starts at the cycle a new game starts at
     for (i = 0; i < CLOCK_CYCLE_COUNT; i++) {
-        const struct ClockCycle *cycle = &sClockCycles[i];
+        int index = (GAME_CLOCK_NEW_GAME_CYCLE + i) % CLOCK_CYCLE_COUNT;
+        const struct ClockCycle *cycle = &sClockCycles[index];
+        u32 cycleSeconds = sSeasonCycleSeconds[sLoopSeason][index];
 
-        if (elapsedSeconds < cycle->CycleSeconds) {
-            gameSecond = (cycle->CycleStartSecond + elapsedSeconds * cycle->CycleInGameSeconds / cycle->CycleSeconds) % SECONDS_PER_DAY;
+        if (elapsedSeconds < cycleSeconds) {
+            gameSecond = (cycle->CycleStartSecond + elapsedSeconds * cycle->CycleInGameSeconds / cycleSeconds) % SECONDS_PER_DAY;
             break;
         }
 
-        elapsedSeconds -= cycle->CycleSeconds;
+        elapsedSeconds -= cycleSeconds;
     }
 
     if (SaveBlock2_get() != NULL) {
@@ -221,6 +304,7 @@ void LONG_CALL Field_RegrowApricornTrees_Detached(void *fieldSystem)
 // Berry Pots: the vanilla update grows the pots with the real minutes passed since the last visit.
 // Here a pot grows with its own play time instead. A berry whose vanilla growth time is H hours needs
 // BERRY_REGROW_DAYS in-game days * (1 + H / 100) of play per growth stage. Example with 4 days: H = 36 -> 4 days * 1.36.
+// The length of an in-game day is the one of the season the current loop uses.
 
 // Overlay functions: ov16_02201760 grows the pots by the given vanilla minutes, the others redraw the app
 #define ov16_02201760 ((void (*)(BerryPot *, const void *, s32))(0x02201760u | 1u))
@@ -250,7 +334,7 @@ void LONG_CALL BerryPots_UpdateGrowth_Detached(struct BerryPotsAppDataHead *data
     BOOL anyGrown = FALSE;
     int i;
 
-    (void)GetCycleElapsedSeconds();   // count the frames since the last clock read
+    (void)GetCycleElapsedSeconds();   // count the frames since the last clock read, and update the season of the loop
     berryClock = GetVar32(GAME_CLOCK_BERRY_CLOCK_VAR);
 
     for (i = 0; i < MAX_BERRY_POT; i++) {
@@ -275,7 +359,7 @@ void LONG_CALL BerryPots_UpdateGrowth_Detached(struct BerryPotsAppDataHead *data
         }
 
         // seconds of play one growth stage takes
-        secondsPerStage = BERRY_REGROW_DAYS * COMPLETE_CYCLES_SECONDS * (100 + hours) / 100;
+        secondsPerStage = BERRY_REGROW_DAYS * sSeasonLoopSeconds[sLoopSeason] * (100 + hours) / 100;
 
         // play time of this pot, limited so the multiplications below stay inside 32 bits
         stamp = GetVar32(stampVar);
