@@ -400,3 +400,49 @@ void LONG_CALL BerryPots_UpdateGrowth_Detached(struct BerryPotsAppDataHead *data
         }
     }
 }
+// Pokegear clock: PokegearApp_UpdateClockSprites (overlay 100) reads the real clock by itself, so it is replaced.
+// The digits show the in-game time, the weekday still follows the real calendar.
+// Both addresses come from find_pokegear_addrs.py (ManagedSprite_SetAnimationFrame is an arm9 function)
+#define ManagedSprite_SetAnimationFrame_ADDRESS 0x0200DCC1u
+#define ManagedSprite_SetAnimationFrame ((void (*)(void *, u16))ManagedSprite_SetAnimationFrame_ADDRESS)
+
+CLOCK_STATIC_ASSERT(PokegearSpriteAddressSet, ManagedSprite_SetAnimationFrame_ADDRESS != 0);
+
+// Fields of PokegearAppData
+#define POKEGEAR_NEED_CLOCK_UPDATE_OFFSET 0x07  // u8
+#define POKEGEAR_TIME_OFFSET              0x80  // RTCTime of the last redraw
+#define POKEGEAR_UI_SPRITES_OFFSET        0x98  // ManagedSprite *[11]: 4 = weekday, 5-8 = hour and minute digits
+
+// Function to hook the Pokegear clock (PokegearApp_UpdateClockSprites)
+BOOL LONG_CALL PokegearApp_UpdateClockSprites_Detached(void *pokegearApp, BOOL force)
+{
+    u8 *app = (u8 *)pokegearApp;
+    struct RTCTime *lastTime = (struct RTCTime *)(app + POKEGEAR_TIME_OFFSET);
+    void **uiSprites = (void **)(app + POKEGEAR_UI_SPRITES_OFFSET);
+    struct RTCDate date;
+    struct RTCTime time;
+    u8 digits[4];
+    u8 i;
+
+    GF_RTC_CopyDate(&date);
+    GF_RTC_CopyTime_Detached(&time);
+
+    // the vanilla check, on the in-game second
+    if (!force && lastTime->second == time.second) {
+        return FALSE;
+    }
+
+    digits[0] = time.hour / 10;
+    digits[1] = time.hour % 10;
+    digits[2] = time.minute / 10;
+    digits[3] = time.minute % 10;
+
+    for (i = 0; i < 4; i++) {
+        ManagedSprite_SetAnimationFrame(uiSprites[i + 5], digits[i]);
+    }
+
+    ManagedSprite_SetAnimationFrame(uiSprites[4], date.week);
+    *lastTime = time;
+    app[POKEGEAR_NEED_CLOCK_UPDATE_OFFSET] = 0;
+    return TRUE;
+}
