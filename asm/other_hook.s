@@ -466,6 +466,20 @@ r6 can stay as r6
 */
 .global Summary_IVEV
 Summary_IVEV:
+push    {r2, r3}
+sub     r1, r2, #3
+ldrsb   r1, [r5, r1]
+add     r0, r5, #0
+bl      Summary_HandleAbilityPopup
+mov     r1, r0
+pop     {r2, r3}
+add     r0, r5, #0
+cmp     r1, #0
+beq     Summary_IVEV_Continue
+mov     r0, #2
+pop     {r4-r6,pc}
+
+Summary_IVEV_Continue:
 mov     r1, #0x20
 ldr     r4, [r3, #0x4C]
 mov     r6, r4
