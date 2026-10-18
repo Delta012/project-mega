@@ -20,7 +20,7 @@ SNOW_WARNING_GENERATION equ GEN_LATEST
 // 4 : 2-5 turns (Prevents movement for 1-4 turns.)
 // 5 or above : 2-4 turns
 // Champions: 2-3 turns
-SLEEP_TURNS_GENERATION equ 4
+SLEEP_TURNS_GENERATION equ GEN_LATEST
 
 // ALLOW_SAVE_CHANGES tells the assembler that it can build the code that pertains to expanding the save data for extra fields for our usage.
 // this is required for dex expansion and will break PKHeX compatibility!  comment this line out to prevent save changes from being made.
