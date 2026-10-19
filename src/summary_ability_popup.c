@@ -36,9 +36,13 @@
 #define WINDOW_WIDTH_OFFSET         7
 #define WINDOW_HEIGHT_OFFSET        8
 
-// "Y" hint, printed on the right side of the name window (the window is 72 pixels wide)
+// "(Y)" hint, printed on the right side of the name window (the window is 72 pixels wide)
+// The codes of the parentheses come from my memory of the game's character table: if another symbol appears, look for
+// "(" and ")" in the charmap.txt of hg-engine and put the right codes here
+#define CHAR_LPAREN 0x01B9
+#define CHAR_RPAREN 0x01BA
 #define CHAR_Y      0x0143
-#define HINT_X      64
+#define NAME_WINDOW_PIXELS 72
 
 // Top screen: bg 1. The window covers the Pokemon sprite: x 20-31, y 8-17
 // The tiles start right after the last tile used by the windows of this page (0x25D + 19 * 4 = 0x2A9)
@@ -51,10 +55,18 @@
 #define POPUP_BASE_TILE 0x2AA
 #define TILEMAP_FILL_INCLUDES_PALETTE 17
 
-// The sprite of the Pokemon is an object, not a background: while the window is open the objects of the top screen are hidden.
-// Top screen = main engine (0x04000000). If the icons of the touch screen disappear instead, use 0x04001000
+// The sprite of the Pokemon is NOT an object (the ball next to the name is): it is drawn on one of the backgrounds of the top screen.
+// SPRITE_BG_MASK is the bit of that background in the display register: 0x0100 = BG0, 0x0400 = BG2, 0x0800 = BG3.
+// While the window is open that layer is hidden. 0 = nothing is hidden (use the test below to find the right one)
 #define REG_DISPCNT_TOP (*(volatile u32 *)0x04000000)
-#define DISPCNT_OBJ_ON  0x1000
+#define SPRITE_BG_MASK  0x0100  // BG0: found with the layer test
+
+// 1 = the X button hides one layer at a time (BG0, BG2, BG3, all back) on the Skills page, to find which one holds the sprite.
+#define SPRITE_LAYER_TEST 0
+
+// Frames to wait after the window is opened before the sprite is hidden: the text reaches the screen a frame later than the
+// register write, so hiding the sprite at once leaves an empty moment. If the text is still over the sprite for too long, lower it
+#define SPRITE_HIDE_DELAY 2
 
 #define TEXT_COLOR      0x10200 // same colors as the other summary texts: letter 1, shadow 2, background 0
 #define TEXT_X          2
@@ -70,6 +82,7 @@
 
 static struct Window sPopupWindow;
 static BOOL sPopupOpen;
+static u8 sSpriteHideDelay;
 
 void LONG_CALL ScheduleBgTilemapBufferTransfer(void *bgConfig, u8 bgId);
 
@@ -181,8 +194,8 @@ static void OpenPopup(void *summary, u32 ability)
     ScheduleWindowCopyToVram(&sPopupWindow);
     ScheduleBgTilemapBufferTransfer(bgConfig, POPUP_BG);
 
-    // hides the sprite of the Pokemon (and the other objects of the top screen)
-    REG_DISPCNT_TOP &= ~DISPCNT_OBJ_ON;
+    // the sprite is hidden a few frames later (see Summary_HandleAbilityPopup), when the text is already on the screen
+    sSpriteHideDelay = SPRITE_HIDE_DELAY;
 
     String_Delete(name);
     String_Delete(description);
@@ -200,7 +213,8 @@ static void ClosePopup(void *summary)
     ScheduleBgTilemapBufferTransfer(bgConfig, POPUP_BG);
     RemoveWindow(&sPopupWindow);
 
-    REG_DISPCNT_TOP |= DISPCNT_OBJ_ON;
+    sSpriteHideDelay = 0;
+    REG_DISPCNT_TOP |= SPRITE_BG_MASK;
     sPopupOpen = FALSE;
 }
 
@@ -241,6 +255,7 @@ static void ReshapeAbilityBox(void *summary)
     struct Window *name;
     struct Window *description;
     String *hint;
+    int hintX;
 
     if (list == NULL || count <= ADDL_DESC_INDEX) {
         return;
@@ -256,15 +271,43 @@ static void ReshapeAbilityBox(void *summary)
     FillWindowPixelBuffer(description, 0);
     ScheduleWindowCopyToVram(description);
 
-    hint = String_New(4, SUMMARY_HEAP_ID);
-    hint->data[0] = CHAR_Y;
-    hint->data[1] = CHAR_EOS;
-    hint->size = 1;
+    hint = String_New(8, SUMMARY_HEAP_ID);
+    hint->data[0] = CHAR_LPAREN;
+    hint->data[1] = CHAR_Y;
+    hint->data[2] = CHAR_RPAREN;
+    hint->data[3] = CHAR_EOS;
+    hint->size = 3;
 
-    AddTextPrinterParameterizedWithColor(name, 0, hint, HINT_X, 0, 0xFF, TEXT_COLOR, NULL);
+    // right aligned in the name window
+    hintX = NAME_WINDOW_PIXELS - (MEASURE_WIDTH - 2 * FontID_String_GetCenterAlignmentX(0, hint, 0, MEASURE_WIDTH));
+
+    AddTextPrinterParameterizedWithColor(name, 0, hint, hintX, 0, 0xFF, TEXT_COLOR, NULL);
     ScheduleWindowCopyToVram(name);
 
     String_Delete(hint);
+}
+
+// Mode shown by the stats page: 0 = Stats, 1 = EV, 2 = IV (the numbers Summary_ChangeStatScreenState expects)
+static u8 sStatMode;
+
+// Called by Summary_Entry_Hook right after the stats page is drawn: it always starts as Stats
+void Summary_ResetStatMode(void)
+{
+    sStatMode = 0;
+}
+
+// Called by Summary_IVEV when L or R is pressed on the Skills page. The modes rotate:
+// step 1 (R): Stats -> EV -> IV -> Stats
+// step 2 (L): Stats -> IV -> EV -> Stats
+void Summary_RotateStatScreen(struct SummaryState *summary, u32 step)
+{
+    sStatMode += step;
+
+    if (sStatMode >= 3) {
+        sStatMode -= 3;
+    }
+
+    Summary_ChangeStatScreenState(summary, sStatMode);
 }
 
 // Called by Summary_IVEV every frame the summary waits for an input. page is the current page of the summary.
@@ -274,6 +317,14 @@ BOOL Summary_HandleAbilityPopup(void *summary, int page)
     u32 newKeys = gSystem.newKeys;
 
     if (sPopupOpen) {
+        if (sSpriteHideDelay != 0) {
+            sSpriteHideDelay--;
+
+            if (sSpriteHideDelay == 0) {
+                REG_DISPCNT_TOP &= ~SPRITE_BG_MASK;
+            }
+        }
+
         if (newKeys & (KEY_A | KEY_B | KEY_Y)) {
             PlaySE(SE_BUTTON);
             ClosePopup(summary);
@@ -287,6 +338,27 @@ BOOL Summary_HandleAbilityPopup(void *summary, int page)
     }
 
     ReshapeAbilityBox(summary);
+
+#if SPRITE_LAYER_TEST
+    if (newKeys & 0x0400) {    // X
+        static const u16 sLayers[] = { 0x0100, 0x0400, 0x0800 };   // BG0, BG2, BG3
+        static u32 sStep;
+        static u32 sSaved;
+
+        if (sStep == 0) {
+            sSaved = REG_DISPCNT_TOP & 0x1F00;
+        }
+
+        // everything back as it was, then hides the layer of this step (the 4th press leaves everything visible)
+        REG_DISPCNT_TOP = (REG_DISPCNT_TOP & ~0x1F00) | sSaved;
+
+        if (sStep < 3) {
+            REG_DISPCNT_TOP &= ~sLayers[sStep];
+        }
+
+        sStep = (sStep + 1) % 4;
+    }
+#endif
 
     if (newKeys & KEY_Y) {
         u32 ability = GetSummaryAbility(summary);
