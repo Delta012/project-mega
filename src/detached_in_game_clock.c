@@ -520,16 +520,29 @@ BOOL LONG_CALL PokegearApp_UpdateClockSprites_Detached(void *pokegearApp, BOOL f
 
 // ============================================================================================================
 // RADIO
-// HOW TO CHANGE THE SCHEDULE:
-// Each station has a short list. Every line says: "from this game hour, play this show".
-// A show plays until the hour of the next line. The last line plays until midnight.
-// Rules: the first line must start at hour 0, and the hours must go up (0, 8, 16 ... never 8, 0).
-// Example: { 0, SEARCH }, { 8, DRAMA }, { 16, BUENA } = Search Party from 00:00, Radio Drama from 08:00, Buena's Password from 16:00.
-// To add a show, add a line. To remove one, delete its line.
-// The show is chosen when you tune the station and when a show ends. The radio never changes show in the middle of one.
+//
+// Every radio station that changes during the day has a list, and every line of it is a rule:
+//
+//       { DAYS,      HOUR,  SHOW }
+//       { EVERYDAY,  8,     DRAMA }     <- "every day, from 08:00, play the Radio Drama"
+//
+// The radio checks the rules from top to bottom. The last rule that fits the day and the hour wins.
+// That is why the first rule of a list must be { EVERYDAY, 0, ... }: it is the show for the start of the day,
+// and the next rules replace it later in the day.
+//
+// DAYS:  MON  TUE  WED  THU  FRI  SAT  SUN
+//        To pick more days, put a | between them: SAT | SUN
+//        Shortcuts are also available: WEEKDAYS = Monday to Friday, WEEKEND = Saturday and Sunday, EVERYDAY = Monday to Sunday
+// HOUR:  A number from 0 to 23.
+// SHOW:  TRAINERS, TOWN, SEARCH, DRAMA, BUENA.
+//
+// EXAMPLE: Radio Drama from 08:00, but on Sunday Buena's Password plays from 08:00 instead:
+//       { EVERYDAY, 0, SEARCH },
+//       { EVERYDAY, 8, DRAMA },
+//       { SUN,      8, BUENA },     <- comes after the Drama rule, so on Sunday it wins
 // ============================================================================================================
 
-// Show numbers used by the radio (the game uses these numbers)
+// The number of every show. The game uses these numbers, do not change them.
 #define RADIO_SHOW_POKEMON_MUSIC          0
 #define RADIO_SHOW_POKEMON_TALK           1
 #define RADIO_SHOW_POKEMON_SEARCH_PARTY   2
@@ -542,86 +555,104 @@ BOOL LONG_CALL PokegearApp_UpdateClockSprites_Detached(void *pokegearApp, BOOL f
 #define RADIO_SHOW_TEAM_ROCKET            9
 #define RADIO_SHOW_MAHOGANY_SIGNAL        10
 #define RADIO_SHOW_COMMERCIALS            11
- 
-// Short names, to keep the lists easy to read
+
+// Short names of the shows you can use in the lists
 #define TRAINERS RADIO_SHOW_TRAINER_PROFILES
 #define TOWN     RADIO_SHOW_THAT_TOWN_THESE_PEOPLE
 #define SEARCH   RADIO_SHOW_POKEMON_SEARCH_PARTY
 #define DRAMA    RADIO_SHOW_SERIAL_RADIO_DRAMA
 #define BUENA    RADIO_SHOW_BUENAS_PASSWORD
- 
+
+// The days. The game counts them from Sunday (0) to Saturday (6). Every day is one bit, so they can be joined with |
+#define SUN (1 << 0)
+#define MON (1 << 1)
+#define TUE (1 << 2)
+#define WED (1 << 3)
+#define THU (1 << 4)
+#define FRI (1 << 5)
+#define SAT (1 << 6)
+#define WEEKDAYS (MON | TUE | WED | THU | FRI)
+#define WEEKEND  (SAT | SUN)
+#define EVERYDAY (WEEKDAYS | WEEKEND)
+
 struct RadioSlot {
+    u8 days;        // The days this rule is for
     u8 startHour;   // The game hour (0 - 23) when the show starts
-    u8 show;
+    u8 show;        // The show to play
 };
- 
-// SCHEDULE
- 
-// Station 3
+
+// Schedule
+
+// Dial position 3. It plays Trainer Profiles or That Town, These People.
 static const struct RadioSlot sRadioStation2[] = {
-    {  0, TRAINERS },   // 00:00 - 11:59
-    { 12, TOWN },       // 12:00 - 23:59
+    { EVERYDAY,  0, TRAINERS },   // 00:00 - 11:59
+    { EVERYDAY, 12, TOWN },       // 12:00 - 23:59
 };
- 
-// Station 4
+
+// Dial position 4. It plays Search Party, Radio Drama or Buena's Password.
 static const struct RadioSlot sRadioStation3[] = {
-    {  0, SEARCH },     // 00:00 - 07:59
-    {  8, DRAMA },      // 08:00 - 15:59
-    { 16, BUENA },      // 16:00 - 23:59
+    { EVERYDAY,  0, SEARCH },     // 00:00 - 07:59
+    { EVERYDAY,  8, DRAMA },      // 08:00 - 15:59
+    { EVERYDAY, 16, BUENA },      // 16:00 - 23:59
 };
- 
-// Gives the show of a list for an hour: the last line that already started
-static u8 GetScheduledShow(const struct RadioSlot *list, u32 count, u32 hour)
+
+// End of Schedule
+
+// Looks at the rules of a list from top to bottom and gives the show of the last rule that fits this day and hour
+static u8 GetScheduledShow(const struct RadioSlot *list, u32 count, u32 week, u32 hour)
 {
     u8 show = list[0].show;
     u32 i;
- 
+
     for (i = 0; i < count; i++) {
-        if (list[i].startHour <= hour) {
+        if ((list[i].days & (1 << week)) && list[i].startHour <= hour) {
             show = list[i].show;
         }
     }
- 
+
     return show;
 }
- 
+
 #define LIST_SIZE(list) (sizeof(list) / sizeof((list)[0]))
- 
-// Where things are inside the radio data (RadioShow)
+
+// Where things are stored inside the radio data (the game's RadioShow). These are fixed, do not change them.
 #define RADIO_DATE_OFFSET       0x28    // RTCDate: the show reads the weekday from here
 #define RADIO_TIME_OFFSET       0x38    // RTCTime
 #define RADIO_FLAGS_OFFSET      0x66    // u8 with several 1 bit flags
 #define RADIO_FLAG_COMMERCIALS  0x10    // The flag "play the commercials next"
- 
-// Replaces RadioShow_TranslateStationID: gives the show to play for a station of the dial (0 - 7)
+
+// Replaces the vanilla RadioShow_TranslateStationID.
+// The radio asks: "which show should play on dial position X (0 - 7)?" This function answers.
 u8 LONG_CALL RadioShow_TranslateStationID_Detached(void *radioShow, int station)
 {
     u8 *radio = (u8 *)radioShow;
+    struct RTCDate *date = (struct RTCDate *)(radio + RADIO_DATE_OFFSET);
     struct RTCTime *time = (struct RTCTime *)(radio + RADIO_TIME_OFFSET);
- 
+
     if (station >= 8) {
         station = 0;
     }
- 
-    // The previous show asked for the commercials: play them once
+
+    // The last show asked for the commercials: play them now, one time
     if (radio[RADIO_FLAGS_OFFSET] & RADIO_FLAG_COMMERCIALS) {
         radio[RADIO_FLAGS_OFFSET] &= ~RADIO_FLAG_COMMERCIALS;
         return RADIO_SHOW_COMMERCIALS;
     }
- 
-    // The date is the real one (the shows use the weekday), the time is the game time
-    GF_RTC_CopyDate((struct RTCDate *)(radio + RADIO_DATE_OFFSET));
+
+    // Save the date and time inside the radio data, because the shows read them later.
+    // The date is the real one. The time is the game clock.
+    GF_RTC_CopyDate(date);
     GF_RTC_CopyTime_Detached(time);
- 
+
     switch (station) {
     case 0:
         return RADIO_SHOW_POKEMON_MUSIC;
     case 1:
         return RADIO_SHOW_POKEMON_TALK;
     case 2:
-        return GetScheduledShow(sRadioStation2, LIST_SIZE(sRadioStation2), time->hour);
+        return GetScheduledShow(sRadioStation2, LIST_SIZE(sRadioStation2), date->week, time->hour);
     case 3:
-        return GetScheduledShow(sRadioStation3, LIST_SIZE(sRadioStation3), time->hour);
+        return GetScheduledShow(sRadioStation3, LIST_SIZE(sRadioStation3), date->week, time->hour);
     case 4:
         return RADIO_SHOW_POKE_FLUTE;
     case 5:
@@ -631,6 +662,6 @@ u8 LONG_CALL RadioShow_TranslateStationID_Detached(void *radioShow, int station)
     case 7:
         return RADIO_SHOW_MAHOGANY_SIGNAL;
     }
- 
+
     return RADIO_SHOW_POKEMON_MUSIC;
 }
