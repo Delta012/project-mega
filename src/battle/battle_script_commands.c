@@ -1234,6 +1234,10 @@ BOOL BtlCmd_GoToMoveScript(struct BattleSystem *bsys, struct BattleStruct *ctx)
     return FALSE;
 }
 
+#ifdef IMPLEMENT_EXP_SHARE_ALL
+static void ShareExpWithWholeParty(void *bw, struct BattleStruct *sp);
+#endif
+
 /**
  *  @brief script command to start the experience loop
  *
@@ -1252,6 +1256,9 @@ BOOL btl_scr_cmd_27_shouldgetexp(void *bw, struct BattleStruct *sp)
     adrs = read_battle_script_param(sp);
 
     if ((/*cp->client_type*/ sp->fainting_client & 1) && ((fight_type & BATTLE_TYPE_NO_EXPERIENCE) == 0)) {
+#ifdef IMPLEMENT_EXP_SHARE_ALL
+        ShareExpWithWholeParty(bw, sp);
+#endif
 
         // exp. calculation has been entirely moved to Task_DistributeExp_Extend as of the implementation of capture experience.
 
@@ -1325,6 +1332,57 @@ u8 ALIGN4 scratchpad[4] = { 0, 0, 0, 0 };
 #define monCountFromItem     scratchpad[1]
 #define trackPartyExperience scratchpad[2]
 
+#ifdef IMPLEMENT_EXP_SHARE_ALL
+
+// Bit i is 1 if the party member in slot i really fought the current foe (before the whole party was added)
+static u8 sBattleExpFought;
+
+// Called once for every foe that gives experience (fainted or caught).
+// It remembers who really fought, then marks every healthy party member as a participant, so all of them get experience.
+static void ShareExpWithWholeParty(void *bw, struct BattleStruct *sp)
+{
+    u32 side = (sp->fainting_client >> 1) & 1;
+    u32 i;
+
+    sBattleExpFought = sp->obtained_exp_right_flag[side];
+
+    for (i = 0; i < (u32)BattleWorkPokeCountGet(bw, 0); i++) {
+        struct PartyPokemon *pp = BattleWorkPokemonParamGet(bw, 0, i);
+
+        if (GetMonData(pp, MON_DATA_SPECIES, NULL) && GetMonData(pp, MON_DATA_HP, NULL)) {
+            sp->obtained_exp_right_flag[side] |= No2Bit(i);
+        }
+    }
+}
+
+// Experience of one party member.
+// - It fought: it gets its normal share (the total divided between the ones who fought).
+// - It did not fight: it gets EXP_SHARE_ALL_PERCENT % of the experience it would get if it were the only one fighting.
+//   This is calculated on its own, so it takes nothing away from the ones who fought.
+// totalexp is already calculated with the level of this Pokemon.
+static void SetSharedExp(struct BattleStruct *sp, u32 totalexp, u32 slot)
+{
+    u32 exp;
+
+    if (sBattleExpFought & No2Bit(slot)) {
+        exp = totalexp / (monCount ? monCount : 1);
+    } else {
+        exp = totalexp * EXP_SHARE_ALL_PERCENT / 100;
+    }
+
+    sp->obtained_exp = exp ? exp : 1;
+    sp->exp_share_obtained_exp = 0;     // the Exp. Share item gives nothing extra, everybody is already included
+}
+
+// Who counts as "fought" when the experience is divided
+#define EXP_FOUGHT_MASK(sp, side) (sBattleExpFought)
+
+#else
+
+#define EXP_FOUGHT_MASK(sp, side) ((sp)->obtained_exp_right_flag[side])
+
+#endif // IMPLEMENT_EXP_SHARE_ALL
+
 /**
  *  @brief task to distribute experience
  *
@@ -1373,7 +1431,7 @@ void Task_DistributeExp_Extend(void *arg0, void *work)
         for (int i = 0; i < party->count; i++) {
             struct PartyPokemon *pploop = BattleWorkPokemonParamGet(expcalc->bw, exp_client_no, i);
             if ((GetMonData(pploop, MON_DATA_SPECIES, NULL)) && (GetMonData(pploop, MON_DATA_HP, NULL))) {
-                if (sp->obtained_exp_right_flag[client_no /*(sp->fainting_client >> 1) & 1*/] & No2Bit(i)) {
+                if (EXP_FOUGHT_MASK(sp, client_no) & No2Bit(i)) {
                     monCount++;
                 }
 
@@ -1418,6 +1476,9 @@ void Task_DistributeExp_Extend(void *arg0, void *work)
 
             // debug_printf("[Task_DistributeExp_Extend] L = %d, Lp = %d, b = %d, top = %d, bottom = %d, exp = %d\n", level, Lp, base, top, bottom, totalexp);
 
+            #ifdef IMPLEMENT_EXP_SHARE_ALL
+            SetSharedExp(sp, totalexp, sel_mons_no);
+#else
             if (monCountFromItem) {
                 sp->obtained_exp = (totalexp / 2) / monCount;
                 if (sp->obtained_exp == 0) {
@@ -1434,6 +1495,7 @@ void Task_DistributeExp_Extend(void *arg0, void *work)
                 }
                 sp->exp_share_obtained_exp = 0;
             }
+#endif
         }
     }
 
@@ -1460,7 +1522,7 @@ void Task_DistributeExp_Extend(void *arg0, void *work)
             for (int i = 0; i < party->count; i++) {
                 struct PartyPokemon *pploop = BattleWorkPokemonParamGet(expcalc->bw, exp_client_no, i);
                 if ((GetMonData(pploop, MON_DATA_SPECIES, NULL)) && (GetMonData(pploop, MON_DATA_HP, NULL))) {
-                    if (sp->obtained_exp_right_flag[client_no /*(sp->fainting_client >> 1) & 1*/] & No2Bit(i)) {
+                    if (EXP_FOUGHT_MASK(sp, client_no) & No2Bit(i)) {
                         monCount++;
                     }
 
@@ -1476,6 +1538,9 @@ void Task_DistributeExp_Extend(void *arg0, void *work)
         // multiply by 255/390 (map audino to 255) to not get massively inflated experience rates
         totalexp = 255 * GetSpeciesBaseExp(sp->battlemon[sp->fainting_client].species, sp->battlemon[sp->fainting_client].form_no) / 390; // PokePersonalParaGet(sp->battlemon[sp->fainting_client].species, PERSONAL_EXP_YIELD);
         totalexp = (totalexp * sp->battlemon[sp->fainting_client].level) / 7;
+        #ifdef IMPLEMENT_EXP_SHARE_ALL
+        SetSharedExp(sp, totalexp, sel_mons_no);
+#else
         if (monCountFromItem) {
             sp->obtained_exp = (totalexp / 2) / monCount;
             if (sp->obtained_exp == 0) {
@@ -1492,6 +1557,7 @@ void Task_DistributeExp_Extend(void *arg0, void *work)
             }
             sp->exp_share_obtained_exp = 0;
         }
+#endif
     }
 
 #ifdef DEBUG_PRINT_EXPERIENCE_VALUES
@@ -1559,6 +1625,11 @@ BOOL Task_DistributeExp_capture_experience(void *arg0, void *work, u32 get_clien
 
     if (expcalc->seq_no == 0) // set first pokemon gaining experience to a specific one so that it doesn't try to give experience to something that doesn't need it
     {
+#ifdef IMPLEMENT_EXP_SHARE_ALL
+        if (trackPartyExperience == 0) { // first step of this capture: nobody has been given experience yet
+            ShareExpWithWholeParty(expcalc->bw, expcalc->sp);
+        }
+#endif
         int sel_mons_no, item, eqp;
         struct PartyPokemon *pp;
 

@@ -65,6 +65,17 @@
 // NOTE:  wild double battles are currently unstable and broken.  i would not use them at this time.  see this issue for updates on this problem: https://github.com/BluRosie/hg-engine/issues/86
 // #define IMPLEMENT_WILD_DOUBLE_BATTLES
 
+// IMPLEMENT_EXP_SHARE_ALL makes the experience shared with the whole party, like the Exp. Share of the newest games:
+// every healthy Pokemon of the team gets experience from every battle (and from catching), even if it did not fight.
+// The Pokemon that fought get their normal experience (100%, split between them as always).
+// The others get EXP_SHARE_ALL_PERCENT % of the experience they would have gotten if they had fought alone
+// (it is calculated on its own, it does not reduce the experience of the Pokemon that fought).
+// 50 = half, 100 = the same as if it had fought.
+// The held Exp. Share item gives nothing extra when this is on.
+// Comment the line out to go back to the vanilla experience.
+#define IMPLEMENT_EXP_SHARE_ALL
+#define EXP_SHARE_ALL_PERCENT 50
+
 // IMPLEMENT_CAPTURE_EXPERIENCE defines whether or not capturing wild pokemon will net experience
 // commenting this line out disables capture experience
 #define IMPLEMENT_CAPTURE_EXPERIENCE
