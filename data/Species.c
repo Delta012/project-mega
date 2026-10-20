@@ -6472,7 +6472,7 @@ const SpeciesDataEntry sSpeciesData[MAX_SPECIES_INCLUDING_FORMS + 1] = {
             },
             .wildHeldItems = {
                 .common = ITEM_OVAL_STONE,
-                .rare = ITEM_LUCKY_EGG,
+                .rare = ITEM_NONE,
             },
             .genderRatio = 254,
             .hatchCycles = 40,
@@ -13825,7 +13825,7 @@ const SpeciesDataEntry sSpeciesData[MAX_SPECIES_INCLUDING_FORMS + 1] = {
             },
             .wildHeldItems = {
                 .common = ITEM_OVAL_STONE,
-                .rare = ITEM_LUCKY_EGG,
+                .rare = ITEM_NONE,
             },
             .genderRatio = 254,
             .hatchCycles = 40,
@@ -15934,7 +15934,7 @@ const SpeciesDataEntry sSpeciesData[MAX_SPECIES_INCLUDING_FORMS + 1] = {
             },
             .wildHeldItems = {
                 .common = ITEM_PRETTY_FEATHER,
-                .rare = ITEM_LUCKY_EGG,
+                .rare = ITEM_NONE,
             },
             .genderRatio = 127,
             .hatchCycles = 20,
@@ -25111,7 +25111,7 @@ const SpeciesDataEntry sSpeciesData[MAX_SPECIES_INCLUDING_FORMS + 1] = {
             },
             .wildHeldItems = {
                 .common = ITEM_OVAL_STONE,
-                .rare = ITEM_LUCKY_EGG,
+                .rare = ITEM_NONE,
             },
             .genderRatio = 254,
             .hatchCycles = 40,

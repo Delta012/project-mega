@@ -15028,17 +15028,17 @@ const ITEMDATA __data[] =
 
 [ITEM_LUCKY_EGG] =
 {
-    ITEM_PRICE(10000),
-    .holdEffect = HOLD_EFFECT_EXP_UP,
+    ITEM_PRICE(0),
+    .holdEffect = 0,
     .holdEffectParam = 0,
     .pluckEffect = 0,
     .flingEffect = 0,
-    .flingPower = 30,
+    .flingPower = 0,
     .naturalGiftPower = 0,
     .naturalGiftType = 31,
-    .prevent_toss = FALSE,
+    .prevent_toss = TRUE,
     .selectable = FALSE,
-    .fieldPocket = POCKET_ITEMS,
+    .fieldPocket = POCKET_KEY_ITEMS,
     .battlePocket = BATTLE_POCKET_NONE,
     .fieldUseFunc = 0,
     .battleUseFunc = 0,
