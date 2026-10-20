@@ -280,33 +280,34 @@
 // #define BUILD_DUMPED_EVENTDATA
 // #define BUILD_DUMPED_SCR_SEQ
 
-// Configurable in-game clock cycles by editing GAME_CLOCK_*_MINUTES options.
-// You can set how many real minutes each cycle lasts (min 1).
-// A full in-game day lasts as long as the four added together. The default duration of a day is of 72 minutes.
-// It's possible to configure the starting game cycle by editing GAME_CLOCK_NEW_GAME_CYCLE: 0 = morning, 1 = day, 2 = evening, 3 = night. By default, it stats at 10 AM (1).
-// It's possible to configure GAME_CLOCK_APRICORN_REGROW_DAYS to make apricorns grow as fast as you like. By default, apricorns respawn every four in-game days (~5 hours)
-// It's possible to configure BERRY_REGROW_DAYS to make grow as fast as you like. By default, berries have a base grow timer of four in-game days,
-// multiplied by a modifier calculated based on their vanilla grow timer. 
+// You can set how many real minutes each in-game clock cycle lasts by editing GAME_CLOCK_[SEASON]_MINUTES (min. 1 minute). 
+// A full in-game day lasts as long as the four cycles added together. The default duration of a day is of 72 minutes.
+// The starting game cycle is, by default, set at 10 AM. By editing GAME_CLOCK_NEW_GAME_CYCLE, you can change it:
+// 0 = morning, 1 = day, 2 = evening, 3 = night.
+// GAME_CLOCK_APRICORN_REGROW_DAYS can be changed to make apricorns grow as fast as you like:
+// By default, apricorns respawn every four in-game days (~5 hours).
+// BERRY_REGROW_DAYS can be changed to make berries grow as fast as you like:
+// By default, berries have a base grow timer of four in-game days, multiplied by a modifier calculated based on their vanilla grow timer. 
 
-// Spring: morning 5-10, day 10-17, evening 17-20, night 20-5 (Gen 5 hours: 5 / 7 / 3 / 9)
+// Spring: morning 5-10, day 10-17, evening 17-20, night 20-5
 #define GAME_CLOCK_SPRING_MORNING_MINUTES 15
 #define GAME_CLOCK_SPRING_DAY_MINUTES 21
 #define GAME_CLOCK_SPRING_EVENING_MINUTES 9
 #define GAME_CLOCK_SPRING_NIGHT_MINUTES 27
  
-// Summer: morning 4-9, day 9-19, evening 19-21, night 21-4 (Gen 5 hours: 5 / 10 / 2 / 7)
+// Summer: morning 4-9, day 9-19, evening 19-21, night 21-4
 #define GAME_CLOCK_SUMMER_MORNING_MINUTES 15
 #define GAME_CLOCK_SUMMER_DAY_MINUTES 30
 #define GAME_CLOCK_SUMMER_EVENING_MINUTES 6
 #define GAME_CLOCK_SUMMER_NIGHT_MINUTES 21
  
-// Autumn: morning 6-10, day 10-18, evening 18-20, night 20-6 (Gen 5 hours: 4 / 8 / 2 / 10)
+// Autumn: morning 6-10, day 10-18, evening 18-20, night 20-6
 #define GAME_CLOCK_AUTUMN_MORNING_MINUTES 12
 #define GAME_CLOCK_AUTUMN_DAY_MINUTES 24
 #define GAME_CLOCK_AUTUMN_EVENING_MINUTES 6
 #define GAME_CLOCK_AUTUMN_NIGHT_MINUTES 30
  
-// Winter: morning 7-11, day 11-17, evening 17-19, night 19-7 (Gen 5 hours: 4 / 6 / 2 / 12)
+// Winter: morning 7-11, day 11-17, evening 17-19, night 19-7
 #define GAME_CLOCK_WINTER_MORNING_MINUTES 12
 #define GAME_CLOCK_WINTER_DAY_MINUTES 18
 #define GAME_CLOCK_WINTER_EVENING_MINUTES 6
