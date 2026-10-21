@@ -317,4 +317,8 @@
 #define APRICORN_REGROW_DAYS 4
 #define BERRY_REGROW_DAYS 4
 
+// PLA_BATTLE_EXP allows experience and EVs to be given only when the battle is over, like it happens in Legends: Arceus.
+// Comment to disable.
+#define PLA_BATTLE_EXP
+
 #endif

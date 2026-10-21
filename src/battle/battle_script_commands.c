@@ -1236,6 +1236,9 @@ BOOL BtlCmd_GoToMoveScript(struct BattleSystem *bsys, struct BattleStruct *ctx)
 }
 
 static void ShareExpWithWholeParty(void *bw, struct BattleStruct *sp);
+#ifdef PLA_BATTLE_EXP
+static BOOL PlaBattleExp_OnFoeDefeated(void *bw, struct BattleStruct *sp);
+#endif
 
 /**
  *  @brief script command to start the experience loop
@@ -1254,7 +1257,14 @@ BOOL btl_scr_cmd_27_shouldgetexp(void *bw, struct BattleStruct *sp)
     adrs = read_battle_script_param(sp);
 
     if ((sp->fainting_client & 1) && ((fight_type & BATTLE_TYPE_NO_EXPERIENCE) == 0)) {
+#ifdef PLA_BATTLE_EXP
+        if (!PlaBattleExp_OnFoeDefeated(bw, sp)) {
+            // not the last foe: the experience waits for the end of the battle, so the experience script is skipped
+            IncrementBattleScriptPtr(sp, adrs);
+        }
+#else
         ShareExpWithWholeParty(bw, sp);
+#endif
     } else {
         IncrementBattleScriptPtr(sp, adrs);
     }
@@ -1278,6 +1288,21 @@ static u32 sCaptureExpDonePid = 0;
 
 // 130 when the player owns the Lucky Egg, 100 otherwise. Set once for every foe by ShareExpWithWholeParty
 static u32 sExpPercent = 100;
+
+#ifdef PLA_BATTLE_EXP
+// PLA_BATTLE_EXP: the experience of every defeated foe is added up while the battle goes on, and it is given only when the
+// last foe is defeated (or caught), all at once.
+#define PLA_MAX_PARTY 6
+
+// Value of STATE_GET_EXP_CHECK_LEVEL_UP in Task_GetExp. STATE_GET_EXP_START is 0 and the states that follow it (print the message,
+// wait for the message, wait the delay, gauge, wait the gauge, level up check) are START + 1, + 2 ... because the game moves
+// between them with state++. If you change Task_GetExp, check this value in the enum of the decomp.
+#define EXP_STATE_CHECK_LEVEL_UP 5
+
+static u32 sPlaPendingExp[PLA_MAX_PARTY];   // experience waiting for the end of the battle, for every party slot
+static u8 sPlaPendingFought;                // bit i = party slot i fought at least one of the defeated foes
+static BOOL sPlaFlushing;                   // TRUE while the accumulated experience is being given
+#endif
 
 // The Lucky Egg is a Key Item: owning it gives the whole party 30% more experience
 static BOOL PlayerHasLuckyEgg(void)
@@ -1320,7 +1345,7 @@ static void ShareExpWithWholeParty(void *bw, struct BattleStruct *sp)
 // - Everybody in the party gets 50% of it.
 // - The ones who fought also get another 50% of it, divided between all of them, and added to the above.
 // - The result is increased by 30% if the player owns the Lucky Egg.
-static void SetSharedExp(struct BattleStruct *sp, u32 totalexp, u32 slot)
+static u32 ComputeSharedExp(u32 totalexp, u32 slot)
 {
     u32 exp = totalexp / 2;
 
@@ -1328,7 +1353,18 @@ static void SetSharedExp(struct BattleStruct *sp, u32 totalexp, u32 slot)
         exp += (totalexp / 2) / (monCount ? monCount : 1);
     }
 
-    exp = exp * sExpPercent / 100;      // Lucky Egg: +30% for everybody
+    return exp * sExpPercent / 100;     // Lucky Egg: +30% for everybody
+}
+
+static void SetSharedExp(struct BattleStruct *sp, u32 totalexp, u32 slot)
+{
+#ifdef PLA_BATTLE_EXP
+    // the experience of all the defeated foes was added up during the battle: it is given now, in one go
+    u32 exp = slot < PLA_MAX_PARTY ? sPlaPendingExp[slot] : 0;
+    (void)totalexp;
+#else
+    u32 exp = ComputeSharedExp(totalexp, slot);
+#endif
 
     sp->obtained_exp = exp ? exp : 1;
     sp->exp_share_obtained_exp = 0;     // the old Exp. Share item bonus is not used
@@ -1371,6 +1407,224 @@ static void RefreshBattlerStats(void *bw, struct BattleStruct *sp, u32 slot, str
         battleMon->maxhp = newMaxHp;
     }
 }
+
+#ifdef PLA_BATTLE_EXP
+
+// Looks at the parties of the foes. alive = foes that can still fight. defeatedOthers = foes already defeated, not counting
+// the one that is fainting now. The Pokemon on the field are read from the battle data, the others from the party.
+static void PlaCountFoes(void *bw, struct BattleStruct *sp, u32 *alive, u32 *defeatedOthers)
+{
+    u32 lastFoe = (BattleTypeGet(bw) & BATTLE_TYPE_DOUBLES) ? 3 : 1;
+    u32 foe;
+
+    *alive = 0;
+    *defeatedOthers = 0;
+
+    for (foe = 1; foe <= lastFoe; foe += 2) {
+        u32 count;
+        u32 i;
+
+        // in a double battle against one trainer both foes use the same party: it is counted once
+        if (foe == 3 && BattleWorkPokePartyGet(bw, 3) == BattleWorkPokePartyGet(bw, 1)) {
+            break;
+        }
+
+        count = BattleWorkPokeCountGet(bw, foe);
+
+        for (i = 0; i < count; i++) {
+            struct PartyPokemon *pp = BattleWorkPokemonParamGet(bw, foe, i);
+            u32 hp;
+            BOOL isFainting = FALSE;
+            u32 c;
+
+            if (pp == NULL || GetMonData(pp, MON_DATA_SPECIES, NULL) == 0 || GetMonData(pp, MON_DATA_IS_EGG, NULL)) {
+                continue;
+            }
+
+            hp = GetMonData(pp, MON_DATA_HP, NULL);
+
+            for (c = 1; c <= lastFoe; c += 2) {
+                if (sp->sel_mons_no[c] != i) {
+                    continue;
+                }
+
+                if (c != foe && BattleWorkPokePartyGet(bw, c) != BattleWorkPokePartyGet(bw, foe)) {
+                    continue;
+                }
+
+                hp = sp->battlemon[c].hp;
+
+                if (c == sp->fainting_client) {
+                    isFainting = TRUE;
+                }
+            }
+
+            if (hp != 0) {
+                (*alive)++;
+            } else if (!isFainting) {
+                (*defeatedOthers)++;
+            }
+        }
+    }
+}
+
+// Experience that the foe that is fainting (or being caught) gives to the Pokemon pp, before it is divided between anybody.
+// It is the same calculation that Task_DistributeExp_Extend does.
+static u32 PlaCalcFoeExp(struct BattleStruct *sp, struct PartyPokemon *pp)
+{
+    struct BattlePokemon *foe = &sp->battlemon[sp->fainting_client];
+    u32 base = GetSpeciesBaseExp(foe->species, foe->form_no);
+    u32 level = foe->level;
+    u32 totalexp;
+
+#if EXPERIENCE_FORMULA_GEN == 5 || EXPERIENCE_FORMULA_GEN > 6 // scaled exp rate
+    u32 Lp = GetMonData(pp, MON_DATA_LEVEL, NULL);
+    u32 top = (2 * level + 10) * (2 * level + 10) * sqrt(2 * level + 10);
+    u32 bottom = (level + Lp + 10) * (level + Lp + 10) * sqrt(level + Lp + 10);
+    u32 result;
+
+    totalexp = (base * level) / 5;
+    result = top * totalexp;
+
+    if ((result / top) != totalexp) {
+        // overflow: same correction as the one in Task_DistributeExp_Extend
+        totalexp = result + 1;
+        totalexp = (totalexp / bottom) + (-1u / bottom) + 1;
+    } else {
+        totalexp *= top;
+        totalexp /= bottom;
+    }
+#else // flat exp rate
+    (void)pp;
+
+    totalexp = 255 * base / 390;
+    totalexp = (totalexp * level) / 7;
+#endif
+
+    return totalexp;
+}
+
+// Adds the experience of the foe that is fainting (or being caught) to the one waiting for the end of the battle.
+// Every party member (but eggs) gets its share, even the ones that are fainted now: they get it at the end only if they are standing.
+static void PlaAccumulateFoe(void *bw, struct BattleStruct *sp)
+{
+    u32 alive;
+    u32 defeatedOthers;
+    u32 count = BattleWorkPokeCountGet(bw, 0);
+    u32 i;
+
+    PlaCountFoes(bw, sp, &alive, &defeatedOthers);
+
+    // The first foe defeated in a battle starts from zero (this clears what a lost or abandoned battle left),
+    // and so does the first one after the experience was given (a second wild foe after the first one was caught).
+    if (sPlaFlushing || defeatedOthers == 0) {
+        for (i = 0; i < PLA_MAX_PARTY; i++) {
+            sPlaPendingExp[i] = 0;
+        }
+
+        sPlaPendingFought = 0;
+        sPlaFlushing = FALSE;
+    }
+
+    for (i = 0; i < count && i < PLA_MAX_PARTY; i++) {
+        struct PartyPokemon *pp = BattleWorkPokemonParamGet(bw, 0, i);
+
+        if (pp == NULL || GetMonData(pp, MON_DATA_SPECIES, NULL) == 0 || GetMonData(pp, MON_DATA_IS_EGG, NULL)) {
+            continue;
+        }
+
+        sPlaPendingExp[i] += ComputeSharedExp(PlaCalcFoeExp(sp, pp), i);
+    }
+
+    sPlaPendingFought |= sBattleExpFought;
+}
+
+// The EVs of a foe that is not the last one are given at once (they have no text), to the Pokemon that fought it.
+static void PlaGiveEvsNow(void *bw, struct BattleStruct *sp)
+{
+    u32 count = BattleWorkPokeCountGet(bw, 0);
+    u32 i;
+
+    for (i = 0; i < count && i < PLA_MAX_PARTY; i++) {
+        struct PartyPokemon *pp;
+
+        if (!(sBattleExpFought & No2Bit(i))) {
+            continue;
+        }
+
+        pp = BattleWorkPokemonParamGet(bw, 0, i);
+        if (pp == NULL) {
+            continue;
+        }
+
+        DistributeEffortValues(BattleWorkPokePartyGet(bw, 0),
+            i,
+            sp->battlemon[sp->fainting_client].species,
+            sp->battlemon[sp->fainting_client].form_no);
+
+        // stats with the new EVs, only when the level is the right one (same rule as in Task_DistributeExp_Extend)
+        if (CalcLevelBySpeciesAndExp(GetMonData(pp, MON_DATA_SPECIES, NULL), GetMonData(pp, MON_DATA_EXPERIENCE, NULL)) == GetMonData(pp, MON_DATA_LEVEL, NULL)) {
+            RecalcPartyPokemonStats(pp);
+            RefreshBattlerStats(bw, sp, i, pp);
+        }
+    }
+}
+
+// Called by the script command when a foe is defeated.
+// @return TRUE if this is the last foe: the experience script runs and gives everything. FALSE: the script is skipped.
+static BOOL PlaBattleExp_OnFoeDefeated(void *bw, struct BattleStruct *sp)
+{
+    u32 side = (sp->fainting_client >> 1) & 1;
+    u32 alive;
+    u32 defeatedOthers;
+
+    ShareExpWithWholeParty(bw, sp);     // who fought, Lucky Egg
+    PlaAccumulateFoe(bw, sp);
+    PlaCountFoes(bw, sp, &alive, &defeatedOthers);
+
+    if (alive == 0) {
+        sPlaFlushing = TRUE;
+        return TRUE;
+    }
+
+    PlaGiveEvsNow(bw, sp);
+
+    // the experience script is not run for this foe, so the "who fought" flags are cleared here, as they would be after it
+    sp->obtained_exp_right_flag[side] = 0;
+
+    return FALSE;
+}
+
+// Called when the Pokemon that is being caught gives its experience: it is always the end of the battle.
+static void PlaBattleExp_OnCaptured(void *bw, struct BattleStruct *sp)
+{
+    ShareExpWithWholeParty(bw, sp);
+    PlaAccumulateFoe(bw, sp);
+    sPlaFlushing = TRUE;
+}
+
+// A Pokemon that did not fight any of the defeated foes gets its experience here, without any text.
+// The game's own step would print "gained N Exp. Points!", so it is replaced by this and the task goes on with the level up check.
+// The bonus for traded Pokemon is not applied here.
+static void PlaGiveExpSilently(struct EXP_CALCULATOR *expcalc, struct PartyPokemon *pp)
+{
+    struct BattleStruct *sp = expcalc->sp;
+    u32 exp = sp->obtained_exp;
+    u32 total;
+
+    if (GetMonData(pp, MON_DATA_LEVEL, NULL) == 100) {
+        return;
+    }
+
+    if (BattleTypeGet(expcalc->bw) & BATTLE_TYPE_TRAINER) {
+        exp = exp * 150 / 100;
+    }
+
+    total = GetMonData(pp, MON_DATA_EXPERIENCE, NULL) + exp;
+    SetMonData(pp, MON_DATA_EXPERIENCE, &total);
+}
+
+#endif // PLA_BATTLE_EXP
 
 /**
  *  @brief task to distribute experience
@@ -1514,6 +1768,15 @@ void Task_DistributeExp_Extend(void *arg0, void *work)
         }
     }
 
+#ifdef PLA_BATTLE_EXP
+    // The Pokemon that did not fight get no experience text: only the level up is shown.
+    if (expcalc->seq_no == 0 && pp != NULL && sel_mons_no < BattleWorkPokeCountGet(expcalc->bw, exp_client_no)
+        && !(sPlaPendingFought & No2Bit(sel_mons_no))) {
+        PlaGiveExpSilently(expcalc, pp);
+        expcalc->seq_no = EXP_STATE_CHECK_LEVEL_UP;
+    }
+#endif
+
 _skipAllThis:
     Task_DistributeExp(arg0, work);
 
@@ -1621,7 +1884,11 @@ BOOL Task_DistributeExp_capture_experience(void *arg0, void *work, u32 get_clien
     if (expcalc->seq_no == 0) // set first pokemon gaining experience to a specific one so that it doesn't try to give experience to something that doesn't need it
     {
         if (trackPartyExperience == 0) { // first step of this capture: nobody has been given experience yet
+#ifdef PLA_BATTLE_EXP
+            PlaBattleExp_OnCaptured(expcalc->bw, expcalc->sp);
+#else
             ShareExpWithWholeParty(expcalc->bw, expcalc->sp);
+#endif
         }
         int sel_mons_no;
         struct PartyPokemon *pp;
