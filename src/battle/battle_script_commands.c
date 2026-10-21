@@ -1334,6 +1334,44 @@ static void SetSharedExp(struct BattleStruct *sp, u32 totalexp, u32 slot)
     sp->exp_share_obtained_exp = 0;     // the old Exp. Share item bonus is not used
 }
 
+// Copies the stats of a party Pokemon (the one in the team) into the battle data of the Pokemon that is fighting right now.
+// During a battle the game does not read the stats from the team: it uses its own copy. If only the team is updated,
+// the fighting Pokemon keeps the old stats until it is switched out or the battle ends.
+// This copies the new ones at once, so they count in the battle immediately.
+static void RefreshBattlerStats(void *bw, struct BattleStruct *sp, u32 slot, struct PartyPokemon *mon)
+{
+    u32 battleType = BattleTypeGet(bw);
+    u32 battler;
+
+    for (battler = 0; battler <= BATTLER_PLAYER2; battler += BATTLER_PLAYER2) {
+        struct BattlePokemon *battleMon = &sp->battlemon[battler];
+        u32 newMaxHp;
+
+        // the second player battler uses the player's party only in a normal double battle (as the game does for the experience)
+        if (battler == BATTLER_PLAYER2 && (!(battleType & BATTLE_TYPE_DOUBLES) || (battleType & BATTLE_TYPE_AI))) {
+            continue;
+        }
+
+        if (sp->sel_mons_no[battler] != slot) {
+            continue;
+        }
+
+        battleMon->attack = GetMonData(mon, MON_DATA_ATTACK, NULL);
+        battleMon->defense = GetMonData(mon, MON_DATA_DEFENSE, NULL);
+        battleMon->speed = GetMonData(mon, MON_DATA_SPEED, NULL);
+        battleMon->spatk = GetMonData(mon, MON_DATA_SPECIAL_ATTACK, NULL);
+        battleMon->spdef = GetMonData(mon, MON_DATA_SPECIAL_DEFENSE, NULL);
+
+        // When the max HP goes up, the current HP goes up by the same amount (like the game does for the party).
+        // EVs only add, so the max HP never goes down.
+        newMaxHp = GetMonData(mon, MON_DATA_MAXHP, NULL);
+        if (battleMon->hp > 0 && newMaxHp > battleMon->maxhp) {
+            battleMon->hp += newMaxHp - battleMon->maxhp;
+        }
+        battleMon->maxhp = newMaxHp;
+    }
+}
+
 /**
  *  @brief task to distribute experience
  *
@@ -1348,6 +1386,9 @@ void Task_DistributeExp_Extend(void *arg0, void *work)
     struct EXP_CALCULATOR *expcalc = work;
     int exp_client_no = 0;
     struct BattleStruct *sp = expcalc->sp;
+    BOOL evSlotValid = FALSE;   // TRUE when the EVs of the Pokemon being processed must be checked after the game's own EV step
+    u8 oldEvs[6];
+    u32 i;
 
     client_no = (sp->fainting_client >> 1) & 1;
 
@@ -1438,18 +1479,93 @@ void Task_DistributeExp_Extend(void *arg0, void *work)
 
 #endif
 
-    // distribute effort values to level_cap pokémon who would otherwise not get it
-    if (expcalc->seq_no == 0 && sel_mons_no < BattleWorkPokeCountGet(expcalc->bw, exp_client_no)
-        && pp != NULL
-        && GetMonData(pp, MON_DATA_LEVEL, NULL) == GetLevelCap()) {
-        DistributeEffortValues(BattleWorkPokePartyGet(expcalc->bw, exp_client_no),
-            sel_mons_no,
-            sp->battlemon[sp->fainting_client].species,
-            sp->battlemon[sp->fainting_client].form_no);
+    // EFFORT VALUES (EVs)
+    // The game gives the EVs by itself when it starts working on a Pokemon (state 0), only if it is below level 100,
+    // and it would also give them to the Pokemon that did not fight (they get experience now).
+    // So here we remember the EVs before the game's step, and fix the result after it.
+    if (expcalc->seq_no == 0 && pp != NULL && sel_mons_no < BattleWorkPokeCountGet(expcalc->bw, exp_client_no)) {
+        for (i = 0; i < 6; i++) {
+            oldEvs[i] = GetMonData(pp, MON_DATA_HP_EV + i, NULL);
+        }
+
+        evSlotValid = TRUE;
+    }
+
+    // SAFETY NET: when the game has finished with a Pokemon (state 37), make sure that the stats of a Pokemon that fought
+    // are calculated with its current EVs, whatever happened before. The calculation does nothing if they are already right.
+    if (expcalc->seq_no == 37) {
+        for (i = expcalc->work[6]; i < (u32)BattleWorkPokeCountGet(expcalc->bw, exp_client_no); i++) {
+            struct PartyPokemon *finishedMon = BattleWorkPokemonParamGet(expcalc->bw, exp_client_no, i);
+
+            if (finishedMon == NULL) {
+                break;
+            }
+
+            if (sp->obtained_exp_right_flag[client_no] & No2Bit(i)) {
+                // Only if its level is the one of its experience: RecalcPartyPokemonStats would change the level otherwise
+                if ((sBattleExpFought & No2Bit(i)) && !GetMonData(finishedMon, MON_DATA_IS_EGG, NULL)
+                    && CalcLevelBySpeciesAndExp(GetMonData(finishedMon, MON_DATA_SPECIES, NULL), GetMonData(finishedMon, MON_DATA_EXPERIENCE, NULL)) == GetMonData(finishedMon, MON_DATA_LEVEL, NULL)) {
+                    RecalcPartyPokemonStats(finishedMon);
+                    RefreshBattlerStats(expcalc->bw, sp, i, finishedMon);
+                }
+
+                break;
+            }
+        }
     }
 
 _skipAllThis:
     Task_DistributeExp(arg0, work);
+
+    // The game's EV step has just run for this Pokemon (the task is not finished at state 0, so pp is still valid)
+    if (evSlotValid) {
+        u32 oldSum = 0;
+        u32 newSum = 0;
+        BOOL changed = FALSE;
+
+        for (i = 0; i < 6; i++) {
+            oldSum += oldEvs[i];
+            newSum += GetMonData(pp, MON_DATA_HP_EV + i, NULL);
+        }
+
+        if (!(sBattleExpFought & No2Bit(sel_mons_no)) || GetMonData(pp, MON_DATA_IS_EGG, NULL)) {
+            // It did not fight (or it is an egg): it gets no EVs. Put back the ones it had.
+            if (newSum != oldSum) {
+                for (i = 0; i < 6; i++) {
+                    SetMonData(pp, MON_DATA_HP_EV + i, &oldEvs[i]);
+                }
+            }
+        } else {
+            // It fought. The game gives no EVs at level 100 (and in other cases of the level cap), so give them here.
+            // If the game already gave them, nothing is added. If its EVs are full, nothing is added either.
+            if (newSum == oldSum) {
+                DistributeEffortValues(BattleWorkPokePartyGet(expcalc->bw, exp_client_no),
+                    sel_mons_no,
+                    sp->battlemon[sp->fainting_client].species,
+                    sp->battlemon[sp->fainting_client].form_no);
+            }
+
+            for (i = 0; i < 6; i++) {
+                if (GetMonData(pp, MON_DATA_HP_EV + i, NULL) != oldEvs[i]) {
+                    changed = TRUE;
+                }
+            }
+
+            // The stats are calculated right away with the new EVs, and the battle gets them at once.
+            // IMPORTANT: RecalcPartyPokemonStats also sets the level from the experience. So it is used only when the level
+            // is already the right one. If the Pokemon is about to level up, it is NOT used here: the game's level up
+            // applies the new EVs and the new level together (and the level up screen shows both).
+            if (changed) {
+                u32 species = GetMonData(pp, MON_DATA_SPECIES, NULL);
+                u32 levelAfterExp = CalcLevelBySpeciesAndExp(species, GetMonData(pp, MON_DATA_EXPERIENCE, NULL));
+
+                if (levelAfterExp == GetMonData(pp, MON_DATA_LEVEL, NULL)) {
+                    RecalcPartyPokemonStats(pp);
+                    RefreshBattlerStats(expcalc->bw, sp, sel_mons_no, pp);
+                }
+            }
+        }
+    }
 }
 
 #ifdef IMPLEMENT_CAPTURE_EXPERIENCE
