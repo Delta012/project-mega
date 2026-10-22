@@ -13,6 +13,7 @@
 #include "constants/species.h"
 #include "constants/system_control.h"
 #include "constants/weather_numbers.h"
+#include "constants/game.h"
 
 #include "bag.h"
 #include "battle.h"
@@ -487,8 +488,8 @@ const u8 *BattleScrCmdNames[] = {
     "IsFieldCondition2On",
     "SetFieldCondition2",
     "GoToIfMoveConditionFlagSet",
-    "TryActivateReceiver"
-    "TryActivateEmergencyExit"
+    "TryActivateReceiver",
+    "TryActivateEmergencyExit",
     // "YourCustomCommand",
     "HandleFrostbite",
 };
@@ -1292,17 +1293,12 @@ static u32 sExpPercent = 100;
 // Value of STATE_GET_EXP_CHECK_LEVEL_UP in Task_GetExp (see the note in the decomp enum if you change Task_GetExp).
 #define EXP_STATE_CHECK_LEVEL_UP 5
 
-// Bit i = party slot i sees the experience text. The others get their experience silently, only the level up is shown.
-// Set in ShareExpWithWholeParty (for the current foe) and, with PLA_BATTLE_EXP, widened in PlaAccumulateFoe.
-static u8 sExpTextMask;
-
 #ifdef PLA_BATTLE_EXP
 // PLA_BATTLE_EXP: the experience of every defeated foe is added up while the battle goes on, and it is given only when the
 // last foe is defeated (or caught), all at once.
 #define PLA_MAX_PARTY 6
 
 static u32 sPlaPendingExp[PLA_MAX_PARTY];   // experience waiting for the end of the battle, for every party slot
-static u8 sPlaPendingFought;                // bit i = party slot i fought at least one of the defeated foes
 static BOOL sPlaFlushing;                   // TRUE while the accumulated experience is being given
 #endif
 
@@ -1339,7 +1335,6 @@ static void ShareExpWithWholeParty(void *bw, struct BattleStruct *sp)
     }
 
     sBattleExpFought = fought & healthy;
-    sExpTextMask = sBattleExpFought;
     sp->obtained_exp_right_flag[side] = healthy;
 }
 
@@ -1411,6 +1406,37 @@ static void RefreshBattlerStats(void *bw, struct BattleStruct *sp, u32 slot, str
     }
 }
 
+// TRUE if the party slot is one of the player's Pokemon that is on the field right now.
+static BOOL IsPartySlotOnField(void *bw, struct BattleStruct *sp, u32 slot)
+{
+    u32 battleType = BattleTypeGet(bw);
+    u32 battler;
+
+    for (battler = 0; battler <= BATTLER_PLAYER2; battler += BATTLER_PLAYER2) {
+        // the second player battler uses the player's party only in a normal double battle
+        if (battler == BATTLER_PLAYER2 && (!(battleType & BATTLE_TYPE_DOUBLES) || (battleType & BATTLE_TYPE_AI))) {
+            continue;
+        }
+
+        if (sp->sel_mons_no[battler] == slot) {
+            return TRUE;
+        }
+    }
+
+    return FALSE;
+}
+
+// Checks if the Pokémon is a player's own one.
+static BOOL IsOwnMon(void *bw, struct PartyPokemon *pp)
+{
+    BOOL (*func)(void *bw, struct PartyPokemon *pp) = (BOOL (*)(void *, struct PartyPokemon *))(0x022568B0 | 1);
+
+    return func(bw, pp);
+}
+
+// Gives the experience of a Pokemon that is NOT on the field, without any text: the game's own step (Task_GetExp,
+// STATE_GET_EXP_START) would print "gained N Exp. Points!", so Task_DistributeExp_Extend replaces it with this and
+// jumps to the level up check. Same bonuses and same order as the game's step.
 static void GiveExpWithoutText(struct EXP_CALCULATOR *expcalc, struct PartyPokemon *pp)
 {
     struct BattleStruct *sp = expcalc->sp;
@@ -1423,6 +1449,15 @@ static void GiveExpWithoutText(struct EXP_CALCULATOR *expcalc, struct PartyPokem
 
     if (BattleTypeGet(expcalc->bw) & BATTLE_TYPE_TRAINER) {
         exp = exp * 150 / 100;
+    }
+
+    // Traded Pokemon bonus: 170% if the language differs from the game's, 150% otherwise
+    if (!IsOwnMon(expcalc->bw, pp)) {
+        if (GetMonData(pp, MON_DATA_GAME_LANGUAGE, NULL) != LANG_ENGLISH) {
+            exp = exp * 170 / 100;
+        } else {
+            exp = exp * 150 / 100;
+        }
     }
 
     total = GetMonData(pp, MON_DATA_EXPERIENCE, NULL) + exp;
@@ -1543,7 +1578,6 @@ static void PlaAccumulateFoe(void *bw, struct BattleStruct *sp)
             sPlaPendingExp[i] = 0;
         }
 
-        sPlaPendingFought = 0;
         sPlaFlushing = FALSE;
     }
 
@@ -1556,9 +1590,6 @@ static void PlaAccumulateFoe(void *bw, struct BattleStruct *sp)
 
         sPlaPendingExp[i] += ComputeSharedExp(PlaCalcFoeExp(sp, pp), i);
     }
-
-    sPlaPendingFought |= sBattleExpFought;
-    sExpTextMask = sPlaPendingFought;   // with PLA the text is shown to everybody who fought any of the defeated foes
 }
 
 // The EVs of a foe that is not the last one are given at once (they have no text), to the Pokemon that fought it.
@@ -1624,10 +1655,6 @@ static void PlaBattleExp_OnCaptured(void *bw, struct BattleStruct *sp)
     PlaAccumulateFoe(bw, sp);
     sPlaFlushing = TRUE;
 }
-
-// A Pokemon that did not fight any of the defeated foes gets its experience here, without any text.
-// The game's own step would print "gained N Exp. Points!", so it is replaced by this and the task goes on with the level up check.
-// The bonus for traded Pokemon is not applied here.
 
 #endif // PLA_BATTLE_EXP
 
@@ -1773,21 +1800,12 @@ void Task_DistributeExp_Extend(void *arg0, void *work)
         }
     }
 
-    // The Pokemon that did not fight get no experience text: only the level up is shown.
+    // Only the Pokemon that is on the field right now sees the experience text. The others get it silently: only the level up is shown.
     if (expcalc->seq_no == 0 && pp != NULL && sel_mons_no < BattleWorkPokeCountGet(expcalc->bw, exp_client_no)
-        && !(sExpTextMask & No2Bit(sel_mons_no))) {
+        && !IsPartySlotOnField(expcalc->bw, sp, sel_mons_no)) {
         GiveExpWithoutText(expcalc, pp);
         expcalc->seq_no = EXP_STATE_CHECK_LEVEL_UP;
     }
-
-#ifdef PLA_BATTLE_EXP
-    // The Pokemon that did not fight get no experience text: only the level up is shown.
-    if (expcalc->seq_no == 0 && pp != NULL && sel_mons_no < BattleWorkPokeCountGet(expcalc->bw, exp_client_no)
-        && !(sPlaPendingFought & No2Bit(sel_mons_no))) {
-        GiveExpWithoutText(expcalc, pp);
-        expcalc->seq_no = EXP_STATE_CHECK_LEVEL_UP;
-    }
-#endif
 
 _skipAllThis:
     Task_DistributeExp(arg0, work);
