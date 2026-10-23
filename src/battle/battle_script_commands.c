@@ -3774,6 +3774,9 @@ BOOL BtlCmd_CalcWeatherBallParams(void *bw, struct BattleStruct *sp)
         if (weather & FIELD_CONDITION_HAIL_ALL) {
             sp->move_type = TYPE_ICE;
         }
+        if (weather & FIELD_CONDITION_WIND_ALL) {
+            sp->move_type = TYPE_FLYING;
+        }
         // In Pokémon XD: Gale of Darkness, when used during a shadowy aura, Weather Ball's power doubles to 100, and the move becomes a typeless physical move
         if (weather & FIELD_CONDITION_SHADOWY_AURA_ALL) {
             sp->move_type = TYPE_TYPELESS;

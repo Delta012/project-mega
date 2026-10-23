@@ -529,12 +529,7 @@ int UNUSED CalcBaseDamageInternal(struct BattleSystem *bw, struct BattleStruct *
 
     // Effects relative to a particular side of the field (Tailwind, Safeguard, Pledge combo effects, Wide Guard, etc.):
 
-    // Field effects (weather conditions, Terrains, Imprison, Ion Deluge, Magic Room, Gravity, etc.):
-
-    if ((weather & (FIELD_CONDITION_FOG | FIELD_CONDITION_HAIL_ALL | FIELD_CONDITION_SANDSTORM_ALL | FIELD_CONDITION_RAIN_ALL | FIELD_CONDITION_SNOW_ALL))
-        && (moveno == MOVE_SOLAR_BEAM || moveno == MOVE_SOLAR_BLADE)) {
-        basePowerModifier = QMul_RoundUp(basePowerModifier, UQ412__0_5);
-    }
+    // Field effects (Terrains, Imprison, Ion Deluge, Magic Room, Gravity, etc.):
 
     // handle Terrain overlays
     if (terrainOverlayNumberOfTurnsLeft > 0) {

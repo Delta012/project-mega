@@ -1247,15 +1247,24 @@ void BattleController_CheckSleepOrFrozen(struct BattleSystem *bsys, struct Battl
 
             if (ctx->battlemon[ctx->attack_client].condition & STATUS_SLEEP) {
                 if (ctx->current_move_index != MOVE_SNORE && ctx->moveNoTemp != MOVE_SLEEP_TALK) {
-                    if (BattleRand(bsys) % 2 != 0) {
-                    LoadBattleSubSeqScript(ctx, ARC_BATTLE_SUB_SEQ, BATTLE_SUBSCRIPT_SLEEPING);
-                    ctx->server_seq_no = CONTROLLER_COMMAND_RUN_SCRIPT;
-                    ctx->next_server_seq_no = CONTROLLER_COMMAND_39;
-                    ctx->wb_seq_no = BEFORE_MOVE_START;
-                    CopyBattleMonToPartyMon(bsys, ctx, ctx->attack_client);
-                    ctx->server_status_flag |= BATTLE_STATUS_CHECK_LOOP_ONLY_ONCE;
-                    ctx->waza_status_flag |= MOVE_STATUS_NO_MORE_WORK;
-                    return;
+                    
+                    BOOL StayAsleep;
+
+                    if (weather & (FIELD_CONDITION_HAIL_ALL | FIELD_CONDITION_SNOW_ALL)) {
+                        StayAsleep = (BattleRand(bsys) % 2 != 0);
+                } else {
+                        StayAsleep = (BattleRand(bsys) % 4 == 0);
+                }
+
+                    if (StayAsleep) {
+                        LoadBattleSubSeqScript(ctx, ARC_BATTLE_SUB_SEQ, BATTLE_SUBSCRIPT_SLEEPING);
+                        ctx->server_seq_no = CONTROLLER_COMMAND_RUN_SCRIPT;
+                        ctx->next_server_seq_no = CONTROLLER_COMMAND_39;
+                        ctx->wb_seq_no = BEFORE_MOVE_START;
+                        CopyBattleMonToPartyMon(bsys, ctx, ctx->attack_client);
+                        ctx->server_status_flag |= BATTLE_STATUS_CHECK_LOOP_ONLY_ONCE;
+                        ctx->waza_status_flag |= MOVE_STATUS_NO_MORE_WORK;
+                        return;
                     }
                 }
             } else {
