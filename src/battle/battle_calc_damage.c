@@ -400,6 +400,26 @@ void CalcDamageOverall(void *bw, struct BattleStruct *sp)
             break;
         }
     }
+
+    if ((sp->moveTbl[moveno].effect == MOVE_GUST)
+        || (sp->moveTbl[moveno].effect == MOVE_BLIZZARD)
+        || (sp->moveTbl[moveno].effect == MOVE_AEROBLAST)
+        || (sp->moveTbl[moveno].effect == MOVE_ICY_WIND)
+        || (sp->moveTbl[moveno].effect == MOVE_TWISTER)
+        || (sp->moveTbl[moveno].effect == MOVE_HEAT_WAVE)
+        || (sp->moveTbl[moveno].effect == MOVE_AIR_CUTTER)
+        || (sp->moveTbl[moveno].effect == MOVE_PETAL_BLIZZARD)
+        || (sp->moveTbl[moveno].effect == MOVE_FAIRY_WIND)
+        || (sp->moveTbl[moveno].effect == MOVE_HURRICANE)
+        || (sp->moveTbl[moveno].effect == MOVE_BLEAKWIND_STORM)
+        || (sp->moveTbl[moveno].effect == MOVE_WILDBOLT_STORM)
+        || (sp->moveTbl[moveno].effect == MOVE_SANDSEAR_STORM)) {
+        if (weather & FIELD_CONDITION_SANDSTORM_ALL) {
+            damage = QMul_RoundDown(damage, UQ412__0_7);
+        } else if (weather & FIELD_CONDITION_WIND_ALL) {
+            damage = QMul_RoundDown(damage, UQ412__1_3);
+        }
+    }
 #ifdef DEBUG_DAMAGE_CALC
     debug_printf("\n=================\n");
     debug_printf("[CalcBaseDamage] 6.3 Weather Modifier\n");

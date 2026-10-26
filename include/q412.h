@@ -35,6 +35,7 @@
 #define UQ412__1_3_BUT_LOWER  5324 // 1.3
 #define UQ412__1_67           6840 // 1.67
 #define UQ412__2_0            8192 // 2.0
+#define UQ412__0_7            2867 // 0.7
 #define UQ412__0_6666         2732 // 0.6666
 #define UQ412__0_5            2048 // 0.5
 #define UQ412__0_5_BUT_LOWER  2047 // 0.5
