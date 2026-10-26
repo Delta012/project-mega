@@ -1299,12 +1299,22 @@ u8 LONG_CALL CalcSpeed(void *bw, struct BattleStruct *sp, int client1, int clien
 
     // Step 7: Tailwind
 
-    if (sp->tailwindCount[IsClientEnemy(bw, client1)]) { // new tailwind handling
-        speedModifier1 = QMul_RoundUp(speedModifier1, UQ412__2_0);
-    }
+    if (weather & FIELD_CONDITION_SANDSTORM_ALL) {
+        if (sp->tailwindCount[IsClientEnemy(bw, client1)]) { // new tailwind handling
+            speedModifier1 = QMul_RoundUp(speedModifier1, UQ412__1_5);
+        }
 
-    if (sp->tailwindCount[IsClientEnemy(bw, client2)]) { // new tailwind handling
-        speedModifier2 = QMul_RoundUp(speedModifier2, UQ412__2_0);
+        if (sp->tailwindCount[IsClientEnemy(bw, client2)]) { // new tailwind handling
+            speedModifier2 = QMul_RoundUp(speedModifier2, UQ412__1_5);
+        }
+} else {
+        if (sp->tailwindCount[IsClientEnemy(bw, client1)]) { // new tailwind handling
+            speedModifier1 = QMul_RoundUp(speedModifier1, UQ412__2_0);
+        }
+
+        if (sp->tailwindCount[IsClientEnemy(bw, client2)]) { // new tailwind handling
+            speedModifier2 = QMul_RoundUp(speedModifier2, UQ412__2_0);
+        }
     }
 
 #ifdef DEBUG_SPEED_CALC
