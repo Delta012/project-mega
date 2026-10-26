@@ -309,7 +309,7 @@ int UNUSED CalcBaseDamageInternal(struct BattleSystem *bw, struct BattleStruct *
         break;
     case MOVE_WEATHER_BALL:
         if ((weather & FIELD_CONDITION_WEATHER)
-            && !(weather & (FIELD_CONDITION_STRONG_WINDS | FIELD_CONDITION_SNOW_ALL))) {
+            && !(weather & FIELD_CONDITION_FOG)) {
             movepower *= 2;
         }
         break;
@@ -1397,7 +1397,7 @@ int UNUSED CalcBaseDamageInternal(struct BattleSystem *bw, struct BattleStruct *
         && HasType(sp, defender, TYPE_ROCK)) {
         sp_defense = QMul_RoundDown(sp_defense, UQ412__1_5);
     }
-    if ((weather & FIELD_CONDITION_SNOW_ALL)
+    if ((weather & (FIELD_CONDITION_SNOW_ALL | FIELD_CONDITION_HAIL_ALL))
         && HasType(sp, defender, TYPE_ICE)) {
         defense = QMul_RoundDown(defense, UQ412__1_5);
     }

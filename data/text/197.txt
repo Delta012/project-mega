@@ -1802,3 +1802,6 @@ The opposing {STRVAR_1 1, 0, 0} was frostbitten\nby the {STRVAR_1 8, 1, 0}!
 {STRVAR_1 1, 0, 0}’s {STRVAR_1 5, 1, 0}\nprevents frostbite!
 The wild {STRVAR_1 1, 0, 0}’s\n{STRVAR_1 5, 1, 0} prevents frostbite!
 The opposing {STRVAR_1 1, 0, 0}’s\n{STRVAR_1 5, 1, 0} prevents frostbite!
+{STRVAR_1 1, 0, 0} is still\nabsorbing light!
+The wild {STRVAR_1 1, 0, 0} is still\nabsorbing light!
+The opposing {STRVAR_1 1, 0, 0} is still\nabsorbing light!

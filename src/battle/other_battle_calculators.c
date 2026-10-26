@@ -852,7 +852,8 @@ BOOL LONG_CALL CalcAccuracy(void *bw, struct BattleStruct *sp, int attacker, int
         return FALSE;
     }
 
-    // 5. If the move is a status move, has greater than 50% accuracy, and the target has Wonder Skin, or the move is Thunder / Hurricane and the weather is sun, set the move's accuracy to 50.
+    // 5. If the move is a status move, has greater than 50% accuracy, and the target has Wonder Skin and the weather is sun, set the move's accuracy to 50.
+    // If the move is Thunder and the weather is sandstorm, set the move's accuracy to 50.
 
     // handle wonder skin
     if ((MoldBreakerAbilityCheck(sp, attacker, defender, ABILITY_WONDER_SKIN) == TRUE)
@@ -860,11 +861,9 @@ BOOL LONG_CALL CalcAccuracy(void *bw, struct BattleStruct *sp, int attacker, int
         accuracy = accuracy > 50 ? 50 : accuracy;
     }
 
-    if ((weather & FIELD_CONDITION_SUN_ALL)
-        // thunder sucks in the sun
-        && ((sp->moveTbl[move_no].effect == MOVE_EFFECT_THUNDER)
-            // so does hurricane
-            || (sp->moveTbl[move_no].effect == MOVE_EFFECT_HURRICANE))) {
+    if ((weather & FIELD_CONDITION_SANDSTORM_ALL)
+        // thunder sucks in the sandstorm
+        && ((sp->moveTbl[move_no].effect == MOVE_EFFECT_THUNDER))) {
         accuracy = 50;
     }
 

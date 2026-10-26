@@ -39,12 +39,10 @@ BOOL BattleFormChangeCheck(void *bw, struct BattleStruct *sp, int *seq_no)
 
         // handle castform
         if ((sp->battlemon[client].species == SPECIES_CASTFORM)
-            && (sp->battlemon[client].hp)
-            && (GetBattlerAbility(sp, client) == ABILITY_FORECAST)) {
+            && (sp->battlemon[client].hp)) {
             if ((CheckSideAbility(bw, sp, CHECK_ABILITY_ALL_HP, 0, ABILITY_CLOUD_NINE) == 0)
                 && (CheckSideAbility(bw, sp, CHECK_ABILITY_ALL_HP, 0, ABILITY_AIR_LOCK) == 0)) {
-                // Snow does not affect Castform in SV, since it cannot enter Paldea, Kitakami nor Blueberry Academy there is no way to confirm
-                if (((sp->field_condition & (FIELD_CONDITION_RAIN_ALL | FIELD_CONDITION_SUN_ALL | FIELD_CONDITION_HAIL_ALL)) == 0)
+                if (((sp->field_condition & (FIELD_CONDITION_RAIN_ALL | FIELD_CONDITION_SUN_ALL | FIELD_CONDITION_SNOW_ALL | FIELD_CONDITION_HAIL_ALL)) == 0)
                     && (sp->battlemon[client].form_no != 0)) {
                     sp->battlemon[client].form_no = 0;
                     BattleFormChange(client, sp->battlemon[client].form_no, bw, sp, 1);
@@ -65,7 +63,7 @@ BOOL BattleFormChangeCheck(void *bw, struct BattleStruct *sp, int *seq_no)
                     *seq_no = BATTLE_SUBSCRIPT_FORM_CHANGE;
                     ret = TRUE;
                     break;
-                } else if ((sp->field_condition & FIELD_CONDITION_HAIL_ALL)
+                } else if ((sp->field_condition & (FIELD_CONDITION_SNOW_ALL | FIELD_CONDITION_HAIL_ALL))
                     && (sp->battlemon[client].form_no != 3)) {
                     sp->battlemon[client].form_no = 3;
                     BattleFormChange(client, sp->battlemon[client].form_no, bw, sp, 1);
@@ -81,24 +79,13 @@ BOOL BattleFormChangeCheck(void *bw, struct BattleStruct *sp, int *seq_no)
                 break;
             }
         }
-        // ability is NOT forecast, but is still an alive castform
-        else if ((sp->battlemon[client].species == SPECIES_CASTFORM)
-            && (sp->battlemon[client].hp)
-            && (sp->battlemon[client].form_no != 0)) {
-            sp->battlemon[client].form_no = 0;
-            BattleFormChange(client, sp->battlemon[client].form_no, bw, sp, 1);
-            *seq_no = BATTLE_SUBSCRIPT_FORM_CHANGE;
-            ret = TRUE;
-            break;
-        }
 
         // handle cherrim
         if ((sp->battlemon[client].species == SPECIES_CHERRIM)
             && (sp->battlemon[client].hp)) {
             if ((CheckSideAbility(bw, sp, CHECK_ABILITY_ALL_HP, 0, ABILITY_CLOUD_NINE) == 0)
                 && (CheckSideAbility(bw, sp, CHECK_ABILITY_ALL_HP, 0, ABILITY_AIR_LOCK) == 0)) {
-                // Same with Forecast, unknown interaction with Snow
-                if (((sp->field_condition & (FIELD_CONDITION_RAIN_ALL | FIELD_CONDITION_SUN_ALL | FIELD_CONDITION_HAIL_ALL)) == 0)
+                if (((sp->field_condition & (FIELD_CONDITION_RAIN_ALL | FIELD_CONDITION_SUN_ALL | FIELD_CONDITION_SNOW_ALL | FIELD_CONDITION_HAIL_ALL)) == 0)
                     && (sp->battlemon[client].form_no == 1)) {
                     sp->battlemon[client].form_no = 0;
                     *seq_no = BATTLE_SUBSCRIPT_FORM_CHANGE;
@@ -116,7 +103,7 @@ BOOL BattleFormChangeCheck(void *bw, struct BattleStruct *sp, int *seq_no)
                     *seq_no = BATTLE_SUBSCRIPT_FORM_CHANGE;
                     ret = TRUE;
                     break;
-                } else if ((sp->field_condition & FIELD_CONDITION_HAIL_ALL)
+                } else if ((sp->field_condition & (FIELD_CONDITION_SNOW_ALL | FIELD_CONDITION_HAIL_ALL))
                     && (sp->battlemon[client].form_no == 1)) {
                     sp->battlemon[client].form_no = 0;
                     *seq_no = BATTLE_SUBSCRIPT_FORM_CHANGE;

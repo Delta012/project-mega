@@ -282,12 +282,6 @@
 
 // You can set how many real minutes each in-game clock cycle lasts by editing GAME_CLOCK_[SEASON]_MINUTES (min. 1 minute). 
 // A full in-game day lasts as long as the four cycles added together. The default duration of a day is of 72 minutes.
-// The starting game cycle is, by default, set at 10 AM. By editing GAME_CLOCK_NEW_GAME_CYCLE, you can change it:
-// 0 = morning, 1 = day, 2 = evening, 3 = night.
-// GAME_CLOCK_APRICORN_REGROW_DAYS can be changed to make apricorns grow as fast as you like:
-// By default, apricorns respawn every four in-game days (~5 hours).
-// BERRY_REGROW_DAYS can be changed to make berries grow as fast as you like:
-// By default, berries have a base grow timer of four in-game days, multiplied by a modifier calculated based on their vanilla grow timer. 
 
 // Spring: morning 5-10, day 10-17, evening 17-20, night 20-5
 #define GAME_CLOCK_SPRING_MORNING_MINUTES 15
@@ -313,6 +307,12 @@
 #define GAME_CLOCK_WINTER_EVENING_MINUTES 6
 #define GAME_CLOCK_WINTER_NIGHT_MINUTES 36
 
+// The starting game cycle is, by default, set at 10 AM. By editing GAME_CLOCK_NEW_GAME_CYCLE, you can change it:
+// 0 = morning, 1 = day, 2 = evening, 3 = night.
+// GAME_CLOCK_APRICORN_REGROW_DAYS can be changed to make apricorns grow as fast as you like:
+// By default, apricorns respawn every four in-game days (~5 hours).
+// BERRY_REGROW_DAYS can be changed to make berries grow as fast as you like:
+// By default, berries have a base grow timer of four in-game days, multiplied by a modifier calculated based on their vanilla grow timer.
 #define GAME_CLOCK_NEW_GAME_CYCLE 1
 #define APRICORN_REGROW_DAYS 4
 #define BERRY_REGROW_DAYS 4

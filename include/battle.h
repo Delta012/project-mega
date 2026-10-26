@@ -784,6 +784,8 @@ typedef struct MoveConditionsFlags {
     u8 firstTurnOut : 2;
 
     // new var
+     u8 extraChargeTurn : 1;
+     
 } MoveConditionsFlags;
 
 typedef struct MovePerformanceContext {

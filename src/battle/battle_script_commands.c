@@ -3595,6 +3595,88 @@ BOOL BtlCmd_CheckStealthRock(void *bw, struct BattleStruct *ctx)
     return FALSE;
 }
 
+// Effects whose secondary effect is a burn. The flinch variants (Fire Fang) are handled in the command itself.
+static BOOL CheckBurnEffect(int effect)
+{
+    switch (effect) {
+    case MOVE_EFFECT_BURN_HIT:
+    case MOVE_EFFECT_THAW_AND_BURN_HIT:
+    case MOVE_EFFECT_HIGH_CRITICAL_BURN_HIT:
+    case MOVE_EFFECT_RECOIL_BURN_HIT:
+    case MOVE_EFFECT_BURN_HIT_DOUBLE_POWER_ON_STATUS:
+    case MOVE_EFFECT_RECOVER_HALF_DAMAGE_DEALT_BURN_HIT:
+    case MOVE_EFFECT_CHARGE_TURN_BURN_HIT:
+        return TRUE;
+    }
+    return FALSE;
+}
+
+// Effects whose secondary effect is frostbite (it uses the freeze effects). The flinch variant (Ice Fang) is handled in the command itself.
+static BOOL CheckFreezeEffect(int effect)
+{
+    switch (effect) {
+    case MOVE_EFFECT_FREEZE_HIT:
+    case MOVE_EFFECT_BLIZZARD:
+        return TRUE;
+    }
+    return FALSE;
+}
+
+BOOL BtlCmd_CheckEffectActivation(struct BattleSystem *bsys, struct BattleStruct *ctx)
+{
+    u16 effectChance;
+
+    IncrementBattleScriptPtr(ctx, 1);
+
+    int adrs = read_battle_script_param(ctx);
+
+    int effect = ctx->moveTbl[ctx->current_move_index].effect;
+    u32 weather = GetWeather(bsys, ctx, ctx->attack_client);
+    BOOL BurnEffect = CheckBurnEffect(effect);
+    BOOL FreezeEffect = CheckFreezeEffect(effect);
+
+    if (effect == MOVE_EFFECT_FLINCH_BURN_HIT || effect == MOVE_EFFECT_FLINCH_FREEZE_HIT) {
+        int nextSubscript = ctx->SkillSeqWork[ctx->skill_seq_no + 1];
+
+        BurnEffect = (nextSubscript == BATTLE_SUBSCRIPT_BURN);
+        FreezeEffect = (nextSubscript == BATTLE_SUBSCRIPT_FREEZE);
+    }
+
+    effectChance = ctx->moveTbl[ctx->current_move_index].secondaryEffectChance;
+
+    GF_ASSERT(effectChance != 0);
+
+    if (BurnEffect) {
+        if (weather & FIELD_CONDITION_RAIN_ALL) {
+            IncrementBattleScriptPtr(ctx, adrs);
+            return FALSE;
+        }
+        if (weather & FIELD_CONDITION_SUN_ALL) {
+            effectChance = effectChance * 2;
+        }
+    } else if (FreezeEffect) {
+        if (weather & FIELD_CONDITION_SUN_ALL) {
+            IncrementBattleScriptPtr(ctx, adrs);
+            return FALSE;
+        }
+        if (weather & (FIELD_CONDITION_SNOW_ALL | FIELD_CONDITION_HAIL_ALL)) {
+            effectChance = effectChance * 2;
+        }
+    }
+
+    if (GetBattlerAbility(ctx, ctx->attack_client) == ABILITY_SERENE_GRACE) {
+        effectChance *= 2;
+    }
+
+    if ((BattleRand(bsys) % 100) < effectChance && ctx->battlemon[ctx->state_client].hp) {
+        return FALSE;
+    }
+
+    IncrementBattleScriptPtr(ctx, adrs);
+
+    return FALSE;
+}
+
 BOOL btl_scr_cmd_103_checkprotectcontactmoves(void *bsys UNUSED, struct BattleStruct *ctx)
 {
     IncrementBattleScriptPtr(ctx, 1);
@@ -3713,7 +3795,7 @@ BOOL btl_scr_cmd_109_checktargetispartner(void *bw UNUSED, struct BattleStruct *
 }
 
 /**
- *  @brief script command to calculate the amount of HP should a client recover by using Moonlight, Morning Sun, or Synthesis
+ *  @brief script command to calculate the amount of HP should a client recover by using Moonlight, Morning Sun, Synthesis and Shore Up
  *
  *  @param bw battle work structure
  *  @param sp global battle structure
@@ -3730,20 +3812,20 @@ BOOL BtlCmd_WeatherHPRecovery(void *bw, struct BattleStruct *sp)
     int attacker = sp->attack_client;
     u32 weather = GetWeather(bw, sp, attacker);
 
-    // For Strong Winds, the moves Moonlight, Morning Sun, and Synthesis continue to recover ½ of max HP, as they do in clear weather.
-    if (!(weather & FIELD_CONDITION_WEATHER) || (weather & FIELD_CONDITION_STRONG_WINDS)) {
+    // For clear weather and wind, the moves Moonlight, Morning Sun, Synthesis and Shore Up continue to recover 50% of max HP.
+    if (!(weather & FIELD_CONDITION_WEATHER) || (weather & FIELD_CONDITION_WIND_ALL)) {
         // sprintf(buf, "Recover half\n");
         // debugsyscall(buf);
-        sp->hp_calc_work = sp->battlemon[attacker].maxhp / 2;
+        sp->hp_calc_work = sp->battlemon[attacker].maxhp * 50, 100;
     } else if ((sp->current_move_index != MOVE_SHORE_UP && weather & FIELD_CONDITION_SUN_ALL)
         || (sp->current_move_index == MOVE_SHORE_UP && weather & FIELD_CONDITION_SANDSTORM_ALL)) {
         // sprintf(buf, "Recover 2/3\n");
         // debugsyscall(buf);
-        sp->hp_calc_work = BattleDamageDivide(sp->battlemon[attacker].maxhp * 20, 30);
+        sp->hp_calc_work = BattleDamageDivide(sp->battlemon[attacker].maxhp * 75, 100);
     } else {
         // sprintf(buf, "Recover 1/4\n");
         // debugsyscall(buf);
-        sp->hp_calc_work = BattleDamageDivide(sp->battlemon[attacker].maxhp, 4);
+        sp->hp_calc_work = BattleDamageDivide(sp->battlemon[attacker].maxhp * 25, 100);
     }
 
     return FALSE;
@@ -3760,7 +3842,7 @@ BOOL BtlCmd_CalcWeatherBallParams(void *bw, struct BattleStruct *sp)
     int attacker = sp->attack_client;
     u32 weather = GetWeather(bw, sp, attacker);
 
-    if ((weather & FIELD_CONDITION_WEATHER) && !(weather & FIELD_CONDITION_STRONG_WINDS)) {
+    if ((weather & FIELD_CONDITION_WEATHER)) {
         sp->damage_power = sp->moveTbl[sp->current_move_index].power * 2;
         if (weather & FIELD_CONDITION_RAIN_ALL) {
             sp->move_type = TYPE_WATER;
@@ -3770,6 +3852,9 @@ BOOL BtlCmd_CalcWeatherBallParams(void *bw, struct BattleStruct *sp)
         }
         if (weather & FIELD_CONDITION_SUN_ALL) {
             sp->move_type = TYPE_FIRE;
+        }
+        if (weather & FIELD_CONDITION_SNOW_ALL) {
+            sp->move_type = TYPE_ICE;
         }
         if (weather & FIELD_CONDITION_HAIL_ALL) {
             sp->move_type = TYPE_ICE;
