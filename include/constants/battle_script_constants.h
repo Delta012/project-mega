@@ -536,6 +536,10 @@
 // define your custom subscripts below like this
 // #define MOVE_SUBSCRIPT_CUSTOM_1 (MAX_BASE_SUBSCRIPT_NUM + 1)
 
+#define BATTLE_SUBSCRIPT_HANDLE_WIND_TEMPORARY                  (524)
+#define BATTLE_SUBSCRIPT_WIND_ABILITY                           (525)
+#define BATTLE_SUBSCRIPT_WIND_END                               (526)
+
 // add status effect constants--used in battle effect scripts to queue up a subscript through the table in src/moves.c
 
 #define MOVE_SUBSCRIPT_PTR_NONE                             (0)

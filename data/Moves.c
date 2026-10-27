@@ -24922,30 +24922,30 @@ const MoveSourceEntry sMoveSource[NUM_OF_MOVES + 1] = {
         .description = "The user pours toxins\\ninto the target through\\na corrosive chain. This\\nmay also leave the\\ntarget badly poisoned.",
     },
 
-    [NUM_OF_MOVES] = {
+    [MOVE_WIND_MOVE] = {
         .names = {
-            .name = "",
-            .capsName = "",
-            .fullName = "",
+            .name = "Wind Move Summ",
+            .capsName = "WIND MOVE SUMM",
+            .fullName = "Wind Move Summ",
         },
         .data = {
-            .effect = MOVE_EFFECT_HIT,
-            .split = SPLIT_SPECIAL,
-            .power = 100,
-            .type = TYPE_NORMAL,
-            .accuracy = 100,
-            .pp = 10,
+            .effect = MOVE_EFFECT_WEATHER_WIND,
+            .split = SPLIT_STATUS,
+            .power = 0,
+            .type = TYPE_FLYING,
+            .accuracy = 0,
+            .pp = 5,
             .effectChance = 0,
         },
         .battle = {
-            .target = RANGE_SINGLE_TARGET,
+            .target = RANGE_FIELD,
             .priority = 0,
-            .flags = FLAG_MIRROR_MOVE | FLAG_UNUSABLE_IN_GEN_8 | FLAG_UNUSABLE_IN_GEN_9 | FLAG_UNUSABLE_UNIMPLEMENTED | FLAG_PROTECT,
+            .flags = 0x00,
         },
         .contest = {
-            .appeal = APPEAL_LOW_VOLTAGE_BOOST,
+            .appeal = APPEAL_KEEP_VOLTAGE_DOWN,
             .contestType = CONTEST_BEAUTY,
         },
-        .description = "",
+        .description = "xd",
     },
 };

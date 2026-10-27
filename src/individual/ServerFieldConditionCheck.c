@@ -203,6 +203,17 @@ void ServerFieldConditionCheck(void *bw, struct BattleStruct *sp)
                 }
             }
 
+            if (sp->field_condition & FIELD_CONDITION_WIND) {
+                if (--sp->fcc.weather_count == 0) {
+                    LoadBattleSubSeqScript(sp, ARC_BATTLE_SUB_SEQ, BATTLE_SUBSCRIPT_WIND_END);
+                    sp->next_server_seq_no = sp->server_seq_no;
+                    sp->server_seq_no = 22;
+                    // TODO: Reuse same animation for now
+                    sp->temp_work = 54;
+                    ret = 1;
+                }
+            }
+
             sp->fcc_seq_no++;
             break;
         }
@@ -271,8 +282,17 @@ void ServerFieldConditionCheck(void *bw, struct BattleStruct *sp)
                 ret = 1;
             }
 
+            if (sp->field_condition & FIELD_CONDITION_WIND) {
+                sp->mp.id = BATTLE_MSG_WINDS_BLOW_ON; // The winds blow on!
+                sp->mp.tag = TAG_NONE;
+                LoadBattleSubSeqScript(sp, ARC_BATTLE_SUB_SEQ, BATTLE_SUBSCRIPT_WEATHER_CONTINUES);
+                sp->next_server_seq_no = sp->server_seq_no;
+                sp->server_seq_no = 22;
+                ret = 1;
+            }
+
             if (sp->field_condition & FIELD_CONDITION_STRONG_WINDS) {
-                sp->mp.id = BATTLE_MSG_STRONG_WINDS_BLOW_ON; // The strong winds blow on!
+                sp->mp.id = BATTLE_MSG_STRONG_WINDS_BLOW_ON; // The mysterious strong winds blow on!
                 sp->mp.tag = TAG_NONE;
                 LoadBattleSubSeqScript(sp, ARC_BATTLE_SUB_SEQ, BATTLE_SUBSCRIPT_WEATHER_CONTINUES);
                 sp->next_server_seq_no = sp->server_seq_no;

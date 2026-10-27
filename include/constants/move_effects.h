@@ -419,6 +419,7 @@
 // #define MOVE_EFFECT_CUSTOM_1 (MAX_BASE_MOVE_EFFECT_NUM + 1)
 
 #define MOVE_EFFECT_STATUS_FREEZE                           409
+#define MOVE_EFFECT_WEATHER_WIND                            410
 
 #define RANGE_SINGLE_TARGET           0
 #define RANGE_SINGLE_TARGET_SPECIAL   (1 << 0)
