@@ -107,8 +107,8 @@ _209:
     GoTo _222
 
 _217:
-    // {0} was frostbitten by the {1}!
-    PrintMessage 1798, TAG_NICKNAME_ITEM, BATTLER_CATEGORY_SIDE_EFFECT_MON, BATTLER_CATEGORY_MSG_TEMP
+    // {0} got frostbitten from {1}!
+    PrintMessage 1801, TAG_NICKNAME_ITEM, BATTLER_CATEGORY_SIDE_EFFECT_MON, BATTLER_CATEGORY_MSG_TEMP
 
 _222:
     Wait
@@ -166,7 +166,7 @@ _296:
     Wait
     WaitButtonABTime 30
     // {0}’s {1} prevents frostbite!
-    PrintMessage 1801, TAG_NICKNAME_ABILITY, BATTLER_CATEGORY_SIDE_EFFECT_MON, BATTLER_CATEGORY_SIDE_EFFECT_MON
+    PrintMessage 1804, TAG_NICKNAME_ABILITY, BATTLER_CATEGORY_SIDE_EFFECT_MON, BATTLER_CATEGORY_SIDE_EFFECT_MON
     GoTo _337
     // {0}’s {1} suppressed {2}’s {3}!
     // IDK

@@ -27,7 +27,7 @@ _ExtraChargeTurn:
     PlayMoveAnimation BATTLER_CATEGORY_ATTACKER
     Wait
     // {0} is still absorbing light!
-    PrintMessage 1804, TAG_NICKNAME, BATTLER_CATEGORY_ATTACKER
+    PrintMessage 1807, TAG_NICKNAME, BATTLER_CATEGORY_ATTACKER
     Wait
     WaitButtonABTime 30
     LockMoveChoice BATTLER_CATEGORY_ATTACKER

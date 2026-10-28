@@ -6,7 +6,7 @@
 _000:
     CompareVarToValue OPCODE_FLAG_SET, BSCRIPT_VAR_FIELD_CONDITION, FIELD_CONDITION_WIND_ALL, _035
     // Winds are blowing!
-    PrintMessage 1807, TAG_NONE
+    PrintMessage 1810, TAG_NONE
     Wait
     WaitButtonABTime 30
     UpdateVar OPCODE_FLAG_OFF, BSCRIPT_VAR_FIELD_CONDITION, FIELD_CONDITION_WEATHER

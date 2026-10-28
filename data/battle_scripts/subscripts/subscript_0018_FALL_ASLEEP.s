@@ -106,7 +106,8 @@ _lowerThanThreeTurns:
     GoTo _211
 
 _205:
-    // {0}’s {1} made {2} become drowsy!
+    AbilityPopup BATTLER_CATEGORY_MSG_BATTLER_TEMP
+    // Became drowsy!
     PrintMessage 50, TAG_NICKNAME_ABILITY_NICKNAME, BATTLER_CATEGORY_MSG_TEMP, BATTLER_CATEGORY_MSG_BATTLER_TEMP, BATTLER_CATEGORY_SIDE_EFFECT_MON
 
 _211:

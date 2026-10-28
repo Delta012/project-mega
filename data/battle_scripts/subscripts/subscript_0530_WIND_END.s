@@ -6,8 +6,8 @@
 _000:
     UpdateVar OPCODE_FLAG_OFF, BSCRIPT_VAR_FIELD_CONDITION, FIELD_CONDITION_WIND
     // The winds have dissipated!
-    PrintMessage 1809, TAG_NONE
+    PrintMessage 1812, TAG_NONE
     Wait 
     WaitButtonABTime 30
-    Call BATTLE_SUBSCRIPT_SWITCH_IN_ABILITY_CHECK
+    GoToSubscript BATTLE_SUBSCRIPT_SWITCH_IN_ABILITY_CHECK
     End 
