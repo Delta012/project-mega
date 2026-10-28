@@ -1510,7 +1510,7 @@ static void PlaCountFoes(void *bw, struct BattleStruct *sp, u32 *alive, u32 *def
 
                 hp = sp->battlemon[c].hp;
 
-                if (c == sp->fainting_client) {
+                if (c == (u32)sp->fainting_client) {
                     isFainting = TRUE;
                 }
             }
@@ -3816,7 +3816,7 @@ BOOL BtlCmd_WeatherHPRecovery(void *bw, struct BattleStruct *sp)
     if (!(weather & FIELD_CONDITION_WEATHER) || (weather & FIELD_CONDITION_WIND_ALL)) {
         // sprintf(buf, "Recover half\n");
         // debugsyscall(buf);
-        sp->hp_calc_work = sp->battlemon[attacker].maxhp * 50, 100;
+        sp->hp_calc_work = BattleDamageDivide(sp->battlemon[attacker].maxhp * 50, 100);
     } else if ((sp->current_move_index != MOVE_SHORE_UP && weather & FIELD_CONDITION_SUN_ALL)
         || (sp->current_move_index == MOVE_SHORE_UP && weather & FIELD_CONDITION_SANDSTORM_ALL)) {
         // sprintf(buf, "Recover 2/3\n");

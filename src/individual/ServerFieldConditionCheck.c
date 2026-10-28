@@ -208,8 +208,8 @@ void ServerFieldConditionCheck(void *bw, struct BattleStruct *sp)
                     LoadBattleSubSeqScript(sp, ARC_BATTLE_SUB_SEQ, BATTLE_SUBSCRIPT_WIND_END);
                     sp->next_server_seq_no = sp->server_seq_no;
                     sp->server_seq_no = 22;
-                    // TODO: Reuse same animation for now
-                    sp->temp_work = 54;
+                    // TODO: Reuse same animation as sun for now
+                    sp->temp_work = 22;
                     ret = 1;
                 }
             }
@@ -288,6 +288,7 @@ void ServerFieldConditionCheck(void *bw, struct BattleStruct *sp)
                 LoadBattleSubSeqScript(sp, ARC_BATTLE_SUB_SEQ, BATTLE_SUBSCRIPT_WEATHER_CONTINUES);
                 sp->next_server_seq_no = sp->server_seq_no;
                 sp->server_seq_no = 22;
+                sp->temp_work = 22;
                 ret = 1;
             }
 

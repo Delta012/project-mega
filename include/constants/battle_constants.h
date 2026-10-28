@@ -1101,8 +1101,6 @@ enum ForceExecutionOrder {
 #define EXECUTION_ORDER_QUASH     (2)
 #endif
 
-#define DISABLE_END_OF_TURN_WEATHER_MESSAGE (1)
-
 #define CATEGORY_PHYSICAL 0
 #define CATEGORY_SPECIAL  1
 #define CATEGORY_STATUS   2
