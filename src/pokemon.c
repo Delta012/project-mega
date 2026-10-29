@@ -937,7 +937,7 @@ BOOL LONG_CALL Party_TryResetShaymin(struct Party *party, int min_max UNUSED, co
     // shaymin handling from pokeheartgold, using the in-game night of the current season
     if (GameClock_IsNight_Detached()) {
         Party_ResetAllShayminToLandForme(party);
-        // ret = TRUE; // test: don't tell the caller
+        ret = TRUE;
     }
 
     return ret;
