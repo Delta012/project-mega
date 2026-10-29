@@ -14,6 +14,8 @@
 // - The hour, minute and second are the game's own and follow your play time.
 // - The date, the day of the week and the season still come from the real calendar.
 // - How long morning / day / evening / night last depends on the season. This can be changed by looking at ~\include\config.h.
+// - The hours at which morning / day / evening / night start depend on the season too (see "HOURS OF EACH SEASON").
+//   Music, map colors, wild Pokemon, battle backgrounds, evolutions... all follow them.
 // - Apricorn trees, Berry Pots, Pokégear and every other thing that checked the time has been converted to use the new system too.
 // ============================================================================================================
 
@@ -22,7 +24,7 @@
 // ============================================================================================================
 
 // These are free script variables of the save file. No vanilla script uses them.
-#define GAME_CLOCK_ELAPSED_SECONDS_VAR 0x40E4   // Seconds played in the current loop (a loop = morning + day + evening + night)
+#define GAME_CLOCK_ELAPSED_SECONDS_VAR 0x40E4   // Seconds played in the current loop (a loop = one game day, from 00:00 to 24:00)
 
 #define GAME_CLOCK_VARS_BASE           0x4059
 #define GAME_CLOCK_APRICORN_DAYS_VAR   GAME_CLOCK_VARS_BASE                 // Game days passed since the apricorn trees grew back
@@ -30,6 +32,20 @@
 #define GAME_CLOCK_BERRY_STAMP_VAR     (GAME_CLOCK_VARS_BASE + 3)           // For each Berry Pot: the berry clock when it was last updated (2 variables per pot)
 #define GAME_CLOCK_SEASON_VAR          (GAME_CLOCK_BERRY_STAMP_VAR + MAX_BERRY_POT * 2) // The season of the current loop (1 = spring ... 4 = winter, 0 = not set)
 #define GAME_CLOCK_VARS_END            (GAME_CLOCK_SEASON_VAR + 1)
+
+// ============================================================================================================
+// HOURS OF EACH SEASON
+//
+// The game hours (0 - 23) at which each part of the day starts and ends, for each season.
+// They are in ~\include\config.h, next to the minutes each part lasts in real time. For every season (SPRING, SUMMER, AUTUMN, WINTER):
+//
+//   GAME_CLOCK_<SEASON>_MORNING_START_HOUR    GAME_CLOCK_<SEASON>_MORNING_END_HOUR
+//   GAME_CLOCK_<SEASON>_DAY_START_HOUR        GAME_CLOCK_<SEASON>_DAY_END_HOUR
+//   GAME_CLOCK_<SEASON>_EVENING_START_HOUR    GAME_CLOCK_<SEASON>_EVENING_END_HOUR
+//   GAME_CLOCK_<SEASON>_NIGHT_START_HOUR      GAME_CLOCK_<SEASON>_NIGHT_END_HOUR
+//
+// Each part ends when the next one starts (the night ends when the morning starts), so the build fails if they do not match.
+// ============================================================================================================
 
 // NUMBERS USED BY THE CLOCK
 #define SECONDS_PER_DAY 86400
@@ -87,6 +103,23 @@ CLOCK_STATIC_ASSERT(SummerLoopFitsInVar, SEASON_LOOP_SECONDS(SUMMER) <= 0xFFFF);
 CLOCK_STATIC_ASSERT(AutumnLoopFitsInVar, SEASON_LOOP_SECONDS(AUTUMN) <= 0xFFFF);
 CLOCK_STATIC_ASSERT(WinterLoopFitsInVar, SEASON_LOOP_SECONDS(WINTER) <= 0xFFFF);
 
+// The parts of the day must be in order inside the same day. The morning starts before noon and the night in the afternoon or later.
+// (The night is the only part that goes past midnight.) Every END hour must be the START hour of the next part.
+#define SEASON_HOURS_VALID(season) (GAME_CLOCK_##season##_MORNING_START_HOUR >= 0 && GAME_CLOCK_##season##_MORNING_START_HOUR <= 12 \
+                                 && GAME_CLOCK_##season##_MORNING_START_HOUR < GAME_CLOCK_##season##_DAY_START_HOUR \
+                                 && GAME_CLOCK_##season##_DAY_START_HOUR < GAME_CLOCK_##season##_EVENING_START_HOUR \
+                                 && GAME_CLOCK_##season##_EVENING_START_HOUR < GAME_CLOCK_##season##_NIGHT_START_HOUR \
+                                 && GAME_CLOCK_##season##_NIGHT_START_HOUR >= 12 && GAME_CLOCK_##season##_NIGHT_START_HOUR <= 23 \
+                                 && GAME_CLOCK_##season##_MORNING_END_HOUR == GAME_CLOCK_##season##_DAY_START_HOUR \
+                                 && GAME_CLOCK_##season##_DAY_END_HOUR == GAME_CLOCK_##season##_EVENING_START_HOUR \
+                                 && GAME_CLOCK_##season##_EVENING_END_HOUR == GAME_CLOCK_##season##_NIGHT_START_HOUR \
+                                 && GAME_CLOCK_##season##_NIGHT_END_HOUR == GAME_CLOCK_##season##_MORNING_START_HOUR)
+
+CLOCK_STATIC_ASSERT(SpringHoursValid, SEASON_HOURS_VALID(SPRING));
+CLOCK_STATIC_ASSERT(SummerHoursValid, SEASON_HOURS_VALID(SUMMER));
+CLOCK_STATIC_ASSERT(AutumnHoursValid, SEASON_HOURS_VALID(AUTUMN));
+CLOCK_STATIC_ASSERT(WinterHoursValid, SEASON_HOURS_VALID(WINTER));
+
 CLOCK_STATIC_ASSERT(ClockNewGameCycleValid, GAME_CLOCK_NEW_GAME_CYCLE >= 0 && GAME_CLOCK_NEW_GAME_CYCLE < CLOCK_CYCLE_COUNT);
 CLOCK_STATIC_ASSERT(ClockVarsInSaveRange, GAME_CLOCK_VARS_BASE >= 0x4020 && GAME_CLOCK_VARS_END - 1 <= 0x416F);
 CLOCK_STATIC_ASSERT(ClockVarsDistinct, GAME_CLOCK_ELAPSED_SECONDS_VAR < GAME_CLOCK_VARS_BASE || GAME_CLOCK_ELAPSED_SECONDS_VAR >= GAME_CLOCK_VARS_END);
@@ -97,17 +130,25 @@ CLOCK_STATIC_ASSERT(BerryRegrowDaysValid, BERRY_REGROW_DAYS >= 1);
 // TABLES
 // ============================================================================================================
 
-struct ClockCycle {
-    u32 CycleStartSecond;       // The game second of the day when this part starts
-    u32 CycleInGameSeconds;     // How many game seconds this part lasts
+// The game hour (0 - 23) at which each part of the day starts, for each season (see "HOURS OF EACH SEASON").
+#define SEASON_START_HOURS(season) { GAME_CLOCK_##season##_MORNING_START_HOUR, GAME_CLOCK_##season##_DAY_START_HOUR, \
+                                     GAME_CLOCK_##season##_EVENING_START_HOUR, GAME_CLOCK_##season##_NIGHT_START_HOUR }
+
+static const u8 sSeasonStartHours[CLOCK_SEASON_COUNT][CLOCK_CYCLE_COUNT] = {
+    [CLOCK_SEASON_SPRING] = SEASON_START_HOURS(SPRING),
+    [CLOCK_SEASON_SUMMER] = SEASON_START_HOURS(SUMMER),
+    [CLOCK_SEASON_AUTUMN] = SEASON_START_HOURS(AUTUMN),
+    [CLOCK_SEASON_WINTER] = SEASON_START_HOURS(WINTER),
 };
 
-// The game hours of each part of the day. They match the vanilla tables, so the colors, music and wild Pokemon change at the right moment.
-static const struct ClockCycle sClockCycles[CLOCK_CYCLE_COUNT] = {
-    [CLOCK_CYCLE_MORNING] = {  4 * 3600,  6 * 3600 }, // 04:00 - 10:00
-    [CLOCK_CYCLE_DAY]     = { 10 * 3600,  7 * 3600 }, // 10:00 - 17:00
-    [CLOCK_CYCLE_EVENING] = { 17 * 3600,  3 * 3600 }, // 17:00 - 20:00
-    [CLOCK_CYCLE_NIGHT]   = { 20 * 3600,  8 * 3600 }, // 20:00 - 04:00
+// The game seconds of the day at which each part starts in the vanilla game (04:00, 10:00, 17:00, 20:00).
+// The game's own code (music, map colors, wild Pokemon, battle backgrounds...) only knows these hours.
+// The clock gives it a time where the parts of the current season are moved onto these hours (see GetEngineSecondOfDay).
+static const u32 sVanillaCycleStartSeconds[CLOCK_CYCLE_COUNT] = {
+    [CLOCK_CYCLE_MORNING] =  4 * 3600,
+    [CLOCK_CYCLE_DAY]     = 10 * 3600,
+    [CLOCK_CYCLE_EVENING] = 17 * 3600,
+    [CLOCK_CYCLE_NIGHT]   = 20 * 3600,
 };
 
 // How many real seconds each part of the day lasts, for each season.
@@ -172,15 +213,79 @@ static u32 GetRealSeason(void)
     return sSeasonOfMonth[date.month];
 }
 
+// The loop is one game day. It is split in 5 pieces, because the night goes past midnight:
+//   [0] the end of the night (00:00 - morning)   [1] morning   [2] day   [3] evening   [4] the start of the night (night - 24:00)
+// Each piece has its own game hours and its own real seconds. The hours depend on the season.
+#define CLOCK_SEGMENT_COUNT 5
+
+struct ClockSegment {
+    u32 gameStart;      // The game second of the day when this piece starts
+    u32 gameSeconds;    // How many game seconds this piece lasts
+    u32 realSeconds;    // How many real seconds this piece lasts
+};
+
+static void GetSeasonSegments(u32 season, struct ClockSegment segments[CLOCK_SEGMENT_COUNT])
+{
+    const u8 *hours = sSeasonStartHours[season];
+    const u16 *real = sSeasonCycleSeconds[season];
+    u32 morningStart = hours[CLOCK_CYCLE_MORNING] * 3600;
+    u32 dayStart = hours[CLOCK_CYCLE_DAY] * 3600;
+    u32 eveningStart = hours[CLOCK_CYCLE_EVENING] * 3600;
+    u32 nightStart = hours[CLOCK_CYCLE_NIGHT] * 3600;
+
+    // The night is one single part of the config, but it is on both sides of midnight.
+    // Its real seconds are shared between the two sides by their game hours, so the night does not speed up or slow down at midnight.
+    u32 nightGameSeconds = (SECONDS_PER_DAY - nightStart) + morningStart;
+    u32 nightEndRealSeconds = real[CLOCK_CYCLE_NIGHT] * morningStart / nightGameSeconds;
+
+    segments[0].gameStart = 0;
+    segments[0].gameSeconds = morningStart;
+    segments[0].realSeconds = nightEndRealSeconds;
+
+    segments[1].gameStart = morningStart;
+    segments[1].gameSeconds = dayStart - morningStart;
+    segments[1].realSeconds = real[CLOCK_CYCLE_MORNING];
+
+    segments[2].gameStart = dayStart;
+    segments[2].gameSeconds = eveningStart - dayStart;
+    segments[2].realSeconds = real[CLOCK_CYCLE_DAY];
+
+    segments[3].gameStart = eveningStart;
+    segments[3].gameSeconds = nightStart - eveningStart;
+    segments[3].realSeconds = real[CLOCK_CYCLE_EVENING];
+
+    segments[4].gameStart = nightStart;
+    segments[4].gameSeconds = SECONDS_PER_DAY - nightStart;
+    segments[4].realSeconds = real[CLOCK_CYCLE_NIGHT] - nightEndRealSeconds;
+}
+
+// The seconds of a loop that have passed when a part of the day starts. Used to start a new game at the right part.
+static u32 GetCycleStartElapsedSeconds(u32 season, int cycle)
+{
+    struct ClockSegment segments[CLOCK_SEGMENT_COUNT];
+    u32 elapsedSeconds = 0;
+    int i;
+
+    GetSeasonSegments(season, segments);
+
+    // The morning starts after piece [0], the day after [0] - [1], the evening after [0] - [2], the night after [0] - [3]
+    for (i = 0; i <= cycle; i++) {
+        elapsedSeconds += segments[i].realSeconds;
+    }
+
+    return elapsedSeconds;
+}
+
 // The season the current loop uses. It is saved, so a loop keeps the same season until it ends.
 static u32 GetLoopSeason(void)
 {
     u32 stored = GetScriptVar(GAME_CLOCK_SEASON_VAR);
 
-    // Nothing saved yet (new game): use today's season
+    // Nothing saved yet (new game): use today's season and start the loop where the new game starts
     if (stored == 0 || stored > CLOCK_SEASON_COUNT) {
         stored = GetRealSeason() + 1;
         SetScriptVar(GAME_CLOCK_SEASON_VAR, stored);
+        SetScriptVar(GAME_CLOCK_ELAPSED_SECONDS_VAR, GetCycleStartElapsedSeconds(stored - 1, GAME_CLOCK_NEW_GAME_CYCLE));
     }
 
     return stored - 1;
@@ -188,7 +293,8 @@ static u32 GetLoopSeason(void)
 
 // How many seconds of the current loop you have played. This is the core of the clock feature.
 // It adds the time that passed since the last call and saves it.
-// A loop is always 24 game hours, so when a loop ends and the season changes, the time does not jump.
+// A loop is always one game day, from 00:00 to 24:00. When it ends, the next one starts at 00:00 with the season of today,
+// so the hour never jumps when the season changes.
 static u32 GetCycleElapsedSeconds(void)
 {
     u32 now = gSystem.vblankCounter;
@@ -215,7 +321,7 @@ static u32 GetCycleElapsedSeconds(void)
         if (seconds != 0) {
             elapsedSeconds += seconds;
 
-            // The loop is over: start the next one, with the season of today
+            // The loop is over (it is midnight): start the next one, with the season of today
             while (elapsedSeconds >= loopSeconds) {
                 elapsedSeconds -= loopSeconds;
                 sLoopSeason = GetRealSeason();
@@ -274,28 +380,35 @@ static void UpdateApricornTrees(u32 gameSecond)
 // GAME TIME
 // ============================================================================================================
 
+// Turns the seconds of the loop into the game second of the day, using the hours of the season of the loop.
+static u32 RealToGameSecond(u32 season, u32 elapsedSeconds)
+{
+    struct ClockSegment segments[CLOCK_SEGMENT_COUNT];
+    int i;
+
+    GetSeasonSegments(season, segments);
+
+    // Go through the pieces one by one, until we find the one that contains the played time.
+    for (i = 0; i < CLOCK_SEGMENT_COUNT; i++) {
+        const struct ClockSegment *segment = &segments[i];
+
+        if (elapsedSeconds < segment->realSeconds) {
+            // Found it. Place the time inside the game hours of this piece.
+            return segment->gameStart + elapsedSeconds * segment->gameSeconds / segment->realSeconds;
+        }
+
+        elapsedSeconds -= segment->realSeconds;
+    }
+
+    return 0; // Out of the loop. It can't happen, because the elapsed seconds are always smaller than the loop.
+}
+
 // The game second of the day (0 - 86399). 0 is midnight, 43200 is noon.
+// This is the time the player sees: the parts of the day start at the hours of the season.
 static u32 GetGameSecondOfDay(void)
 {
     u32 elapsedSeconds = GetCycleElapsedSeconds();
-    u32 gameSecond = 0;
-    int i;
-
-    // The loop starts at the part of the day where a new game begins.
-    // Go through the parts one by one, until we find the one that contains the played time.
-    for (i = 0; i < CLOCK_CYCLE_COUNT; i++) {
-        int index = (GAME_CLOCK_NEW_GAME_CYCLE + i) % CLOCK_CYCLE_COUNT;
-        const struct ClockCycle *cycle = &sClockCycles[index];
-        u32 cycleSeconds = sSeasonCycleSeconds[sLoopSeason][index];
-
-        if (elapsedSeconds < cycleSeconds) {
-            // Found it. Place the time inside the game hours of this part of the day.
-            gameSecond = (cycle->CycleStartSecond + elapsedSeconds * cycle->CycleInGameSeconds / cycleSeconds) % SECONDS_PER_DAY;
-            break;
-        }
-
-        elapsedSeconds -= cycleSeconds;
-    }
+    u32 gameSecond = RealToGameSecond(sLoopSeason, elapsedSeconds);
 
     if (SaveBlock2_get() != NULL) {
         UpdateApricornTrees(gameSecond);
@@ -304,12 +417,41 @@ static u32 GetGameSecondOfDay(void)
     return gameSecond;
 }
 
-// ============================================================================================================
-// FUNCTIONS THAT REPLACE VANILLA ONES (see ~\hooks)
-// ============================================================================================================
+// The second of the day that the game's own code (music, map colors, wild Pokemon, battle backgrounds, evolutions...) must see.
+// That code has the vanilla hours inside (the night starts at 20:00, the morning at 04:00...), and it can't know about the seasons.
+// So the parts of the current season are stretched or squeezed onto the vanilla hours:
+// when the winter night starts (19:00 for the player), the game's code sees 20:00. Midnight stays midnight.
+static u32 GetEngineSecondOfDay(void)
+{
+    u32 gameSecond = GetGameSecondOfDay();
+    const u8 *hours = sSeasonStartHours[sLoopSeason];
+    u32 from[CLOCK_CYCLE_COUNT + 2];
+    u32 to[CLOCK_CYCLE_COUNT + 2];
+    int i;
 
-// Gives the hour, minute and second. Used by wild encounters, evolutions, music and Gracidea.
-void LONG_CALL GF_RTC_CopyTime_Detached(struct RTCTime *time)
+    from[0] = 0;
+    to[0] = 0;
+
+    for (i = 0; i < CLOCK_CYCLE_COUNT; i++) {
+        from[i + 1] = hours[i] * 3600;
+        to[i + 1] = sVanillaCycleStartSeconds[i];
+    }
+
+    from[CLOCK_CYCLE_COUNT + 1] = SECONDS_PER_DAY;
+    to[CLOCK_CYCLE_COUNT + 1] = SECONDS_PER_DAY;
+
+    // Find the piece of the day that contains the time and move it onto the vanilla hours
+    for (i = 0; i <= CLOCK_CYCLE_COUNT; i++) {
+        if (gameSecond < from[i + 1]) {
+            return to[i] + (gameSecond - from[i]) * (to[i + 1] - to[i]) / (from[i + 1] - from[i]);
+        }
+    }
+
+    return gameSecond;
+}
+
+// The time the player sees (hour, minute, second). Used by the Pokégear and the radio.
+static void GetGameTime(struct RTCTime *time)
 {
     u32 gameSecond = GetGameSecondOfDay();
 
@@ -318,14 +460,40 @@ void LONG_CALL GF_RTC_CopyTime_Detached(struct RTCTime *time)
     time->second = gameSecond % 60;
 }
 
-// Gives the second of the day. Used by the colors (tint) of the map.
+// ============================================================================================================
+// FUNCTIONS THAT REPLACE VANILLA ONES (see ~\hooks)
+// ============================================================================================================
+
+// Gives the hour, minute and second. Used by wild encounters, evolutions, music and Gracidea.
+// The game's code only knows the vanilla hours, so this is the time of the season moved onto them (see GetEngineSecondOfDay).
+// The time the player sees is in GetGameTime.
+void LONG_CALL GF_RTC_CopyTime_Detached(struct RTCTime *time)
+{
+    u32 engineSecond = GetEngineSecondOfDay();
+
+    time->hour = engineSecond / 3600;
+    time->minute = (engineSecond % 3600) / 60;
+    time->second = engineSecond % 60;
+}
+
+// Gives the second of the day. Used by the colors (tint) of the map. Same time as GF_RTC_CopyTime_Detached.
 s32 LONG_CALL GF_RTC_TimeToSec_Detached(void)
 {
-    return (s32)GetGameSecondOfDay();
+    return (s32)GetEngineSecondOfDay();
+}
+
+// Tells if it is night right now, using the hours of the season of the loop.
+// Use it when the code must not depend on the vanilla hours (for example Shaymin's Sky Forme).
+BOOL LONG_CALL GameClock_IsNight_Detached(void)
+{
+    u32 gameSecond = GetGameSecondOfDay();
+    const u8 *hours = sSeasonStartHours[sLoopSeason];
+
+    return gameSecond >= (u32)hours[CLOCK_CYCLE_NIGHT] * 3600 || gameSecond < (u32)hours[CLOCK_CYCLE_MORNING] * 3600;
 }
 
 // Gives morning / day / evening / night. Used by battle backgrounds, the GetTimeOfDay script command and NPC trades.
-// The vanilla function is fine: it already asks GF_RTC_CopyTime, which is the game clock now.
+// The vanilla function is fine: it already asks GF_RTC_CopyTime, which is the game clock now (with the hours of the season).
 TIMEOFDAY LONG_CALL Field_GetTimeOfDay_Detached(void *fieldSystem)
 {
     (void)fieldSystem;
@@ -339,11 +507,11 @@ TimeOfDayWildParam LONG_CALL Field_GetTimeOfDayWildParam_Detached(void *fieldSys
     return GF_RTC_GetTimeOfDayWildParam();
 }
 
-// Gives only the hour.
+// Gives only the hour (the one the game's code sees, like GF_RTC_CopyTime_Detached).
 u32 LONG_CALL Field_GetHour_Detached(void *fieldSystem)
 {
     (void)fieldSystem;
-    return GetGameSecondOfDay() / 3600;
+    return GetEngineSecondOfDay() / 3600;
 }
 
 // Replaces the vanilla daily apricorn regrow (sub_020556B8). It does nothing on purpose:
@@ -467,7 +635,7 @@ void LONG_CALL BerryPots_UpdateGrowth_Detached(struct BerryPotsAppDataHead *data
 
 // ============================================================================================================
 // POKÉGEAR CLOCK
-// The Pokégear now showsshow the in-game time. The weekday is still the real one.
+// The Pokégear now showsshow the in-game time (the one of the season). The weekday is still the real one.
 // ============================================================================================================
 
 // Address of ManagedSprite_SetAnimationFrame (an arm9 function).
@@ -494,7 +662,7 @@ BOOL LONG_CALL PokegearApp_UpdateClockSprites_Detached(void *pokegearApp, BOOL f
     u8 i;
 
     GF_RTC_CopyDate(&date);
-    GF_RTC_CopyTime_Detached(&time);
+    GetGameTime(&time);
 
     // Nothing to do if the second is the same as last time (unless we are forced to redraw)
     if (!force && lastTime->second == time.second) {
@@ -640,9 +808,9 @@ u8 LONG_CALL RadioShow_TranslateStationID_Detached(void *radioShow, int station)
     }
 
     // Save the date and time inside the radio data, because the shows read them later.
-    // The date is the real one. The time is the game clock.
+    // The date is the real one. The time is the game clock (the one the player sees).
     GF_RTC_CopyDate(date);
-    GF_RTC_CopyTime_Detached(time);
+    GetGameTime(time);
 
     switch (station) {
     case 0:
