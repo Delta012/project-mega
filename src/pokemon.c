@@ -917,8 +917,10 @@ BOOL LONG_CALL Party_UpdateDeerlingSeasonForm(struct Party *party)
     return ret;
 }
 
+// Defined in detached_in_game_clock.c
+BOOL LONG_CALL GameClock_IsNight_Detached(void);
 /**
- *  @brief function that attempts to reset shaymin from sky form when the RTC passes min_max
+ *  @brief function that attempts to reset shaymin from sky form when it's night in-game
  *         expanded to allow for deerling forms to update when season changes
  *
  *  @param party party to run through and reset shaymin in/update deerling form
@@ -926,35 +928,16 @@ BOOL LONG_CALL Party_UpdateDeerlingSeasonForm(struct Party *party)
  *  @param time
  *  @return TRUE if form change for shaymin is happening; FALSE otherwise
  */
-BOOL LONG_CALL Party_TryResetShaymin(struct Party *party, int min_max, const struct RTCTime *time)
+BOOL LONG_CALL Party_TryResetShaymin(struct Party *party, int min_max UNUSED, const struct RTCTime *time UNUSED)
 {
     u32 ret = FALSE;
     // new:  deerling handling
     ret = Party_UpdateDeerlingSeasonForm(party);
 
-    // shaymin handling from pokeheartgold
-    int hour, minute;
-    if (time->hour >= 20 || time->hour < 4) {
-        hour = time->hour;
-        if (hour < 4) {
-            hour += 24;
-        }
-        minute = time->minute + 60 * (hour - 20);
-        if (minute < min_max + 1) {
-            Party_ResetAllShayminToLandForme(party);
-            ret = TRUE;
-        } /* else {
-             return FALSE;
-         }*/
-    } else {
-        hour = time->hour;
-        minute = time->minute + 60 * (hour - 4);
-        if (minute < min_max) {
-            Party_ResetAllShayminToLandForme(party);
-            ret = TRUE;
-        } /* else {
-             return FALSE;
-         }*/
+    // shaymin handling from pokeheartgold, using the in-game night of the current season
+    if (GameClock_IsNight_Detached()) {
+        Party_ResetAllShayminToLandForme(party);
+        // ret = TRUE; // test: don't tell the caller
     }
 
     return ret;
