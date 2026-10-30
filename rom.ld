@@ -600,6 +600,10 @@ NewMsgDataFromNarc = 0x0200BAF8 | 1;
 ReadMsgDataIntoU16Array = 0x0200BBF4 | 1;
 DestroyMsgData = 0x0200BB44 | 1;
 RestoreBoxMonPP = 0x020728C4 | 1;
+
+HealParty = 0x02090C1C | 1;
+SaveArray_PCStorage_Get = 0x020270D8 | 1;
+
 //PCStorage_PlaceMonInBoxFirstEmptySlot = 0x02073BFC | 1;
 //PCStorage_SetBoxModified = 0x020740D8 | 1;
 CopyU16ArrayToString = 0x020269A0 | 1;
@@ -919,3 +923,11 @@ sub_0207294C = 0x0207294C | 1;
 sub_02017068 = 0x02017068 | 1;
 MapObjectManager_RestoreFromSave = 0x0205E648 | 1;
 Save_MapObjects_Get = 0x0203B9D0 | 1;
+
+CopyPokemonToPokemon = 0x0207188C | 1;
+Party_AddMon = 0x02074524 | 1;
+Party_SafeCopyMonToSlot_ResetAprijuiceModifiers = 0x02074740 | 1;
+ov14_021E60C0 = 0x021E60C0 | 1;
+ov14_021E6100 = 0x021E6100 | 1;
+ov14_021F4958 = 0x021F4958 | 1;
+ov14_021F4A20 = 0x021F4A20 | 1;

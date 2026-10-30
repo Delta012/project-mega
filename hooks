@@ -676,3 +676,9 @@ arm9 Field_RegrowApricornTrees_Detached 020556B8 1
 arm9 Field_GetHour_Detached 02055618 1
 0101 RadioShow_TranslateStationID_Detached 021F58E0 2
 0100 PokegearApp_UpdateClockSprites_Detached 021E5BB0 2
+
+# heal boxed pokémon at the pokémon center
+arm9 ScrCmd_HealParty_Detached 02044628 1
+0014 ov14_021E61BC_Detached 021E61BC 2
+0014 ov14_021E6184_Detached 021E6184 2
+0014 ov14_021E611C_Detached 021E611C 2
