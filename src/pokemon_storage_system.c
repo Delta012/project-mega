@@ -432,21 +432,52 @@ void sub_02074128(PCStorage *storage)
 #ifdef ALLOW_SAVE_CHANGES
 #ifdef EXPAND_PC_BOXES
 
-void PCStorage_HealAllBoxMons(PCStorage *storage)
+// Boxed Pokemon keep their HP and status. The state is "stamped" in the 13 spare bits of the BoxPokemon header
+// when a Pokemon is stored (bits 0-9 = HP lost, bits 10-12 = status code) and applied again when it is converted
+// back to a party Pokemon (CopyBoxPokemonToPokemon_Detached: withdraw, swap, summary screen).
+// The header is outside the checksum. Only the Nurse clears the stamps (PCStorage_HealAllBoxMons).
+
+static BOOL BoxMon_BytesEqual(const struct BoxPokemon *a, const struct BoxPokemon *b)
+{
+    const u32 *pa = (const u32 *)a;
+    const u32 *pb = (const u32 *)b;
+    u32 i;
+
+    for (i = 0; i < sizeof(struct BoxPokemon) / sizeof(u32); i++) {
+        if (pa[i] != pb[i]) {
+            return FALSE;
+        }
+    }
+    return TRUE;
+}
+
+// Restores PP and clears the stored HP/status of every boxed Pokemon.
+// A box is only flagged as modified if one of its Pokemon actually changed,
+// so a nurse visit doesn't force the save to rewrite all the boxes.
+static void PCStorage_HealAllBoxMons(PCStorage *storage)
 {
     u32 i, j;
 
     for (i = 0; i < NUM_PC_BOXES; i++) {
+        BOOL changed = FALSE;
+
         for (j = 0; j < MONS_PER_BOX; j++) {
             struct BoxPokemon *boxMon = &storage->boxes[i].mons[j];
 
             if (GetBoxMonData(boxMon, MON_DATA_SPECIES_EXISTS, NULL)
                 && !GetBoxMonData(boxMon, MON_DATA_IS_EGG, NULL)) {
+                struct BoxPokemon before = *boxMon;
+
                 RestoreBoxMonPP(boxMon);
                 boxMon->Unused = 0;
+                if (!BoxMon_BytesEqual(&before, boxMon)) {
+                    changed = TRUE;
+                }
             }
         }
-        PCStorage_SetBoxModified(storage, i);
+        if (changed) {
+            PCStorage_SetBoxModified(storage, i);
+        }
     }
 }
 
@@ -471,21 +502,33 @@ typedef struct PCUiCtx {
 
 typedef struct PCUiMove {
     struct PartyPokemon *mon;  // +0x00
-    u32 srcSlot;               // +0x04 (>= 0x1E means party slot)
+    u32 srcSlot;               // +0x04
     u32 dstSlot;               // +0x08
 } PCUiMove;
+
+#define PC_UI_PARTY_SLOT_BASE 0x1E // slots >= this value are party slots: party index = slot - 0x1E
+
+#define PC_UI_STATIC_ASSERT(name, cond) typedef char name[(cond) ? 1 : -1]
+PC_UI_STATIC_ASSERT(PCUiCtxBoxnoOffset, __builtin_offsetof(PCUiCtx, boxno) == 0x1F);
+PC_UI_STATIC_ASSERT(PCUiMoveSize, sizeof(PCUiMove) == 12);
 
 struct BoxPokemon *LONG_CALL ov14_021E60C0(PCUiCtx *ctx, u8 boxno, u32 slot);
 void LONG_CALL ov14_021E6100(PCUiCtx *ctx, u8 boxno, u32 slot);
 void LONG_CALL ov14_021F4958(PCUiCtx *ctx, u8 boxno);
 void LONG_CALL ov14_021F4A20(PCUiCtx *ctx, u8 boxno);
-BOOL LONG_CALL Party_AddMon(struct Party *party, struct PartyPokemon *mon);
 void LONG_CALL CopyPokemonToPokemon(struct PartyPokemon *src, struct PartyPokemon *dest);
 void LONG_CALL Party_SafeCopyMonToSlot_ResetAprijuiceModifiers(struct Party *party, int idx, struct PartyPokemon *mon);
 
-// The 13 spare header bits of BoxPokemon store: bits 0-9 = HP lost, bits 10-12 = status code
 #define BOXHP_LOSS_BITS 10
 #define BOXHP_LOSS_MASK 0x3FF
+
+// Status codes (3 bits). Anything above BOXHP_CODE_PARALYSIS is not one of our stamps.
+#define BOXHP_CODE_NONE      0
+#define BOXHP_CODE_SLEEP     1
+#define BOXHP_CODE_POISON    2 // also used for toxic: the toxic counter doesn't survive outside battle
+#define BOXHP_CODE_BURN      3
+#define BOXHP_CODE_FREEZE    4
+#define BOXHP_CODE_PARALYSIS 5
 
 // Status bits as listed in the comment above PartyOnlyPokemon (pokemon.h)
 #define BOXHP_ST_SLEEP_MASK 0x07
@@ -495,24 +538,26 @@ void LONG_CALL Party_SafeCopyMonToSlot_ResetAprijuiceModifiers(struct Party *par
 #define BOXHP_ST_PARALYSIS  (1 << 6)
 #define BOXHP_ST_TOXIC      (1 << 7)
 
+#define BOXHP_SLEEP_TURNS 2 // the sleep counter is lost, so a fixed one is used
+
 static u32 BoxHp_EncodeStatus(u32 st)
 {
-    if (st & (BOXHP_ST_POISON | BOXHP_ST_TOXIC)) return 2;
-    if (st & BOXHP_ST_BURN) return 3;
-    if (st & BOXHP_ST_FREEZE) return 4;
-    if (st & BOXHP_ST_PARALYSIS) return 5;
-    if (st & BOXHP_ST_SLEEP_MASK) return 1;
-    return 0;
+    if (st & (BOXHP_ST_POISON | BOXHP_ST_TOXIC)) return BOXHP_CODE_POISON;
+    if (st & BOXHP_ST_BURN) return BOXHP_CODE_BURN;
+    if (st & BOXHP_ST_FREEZE) return BOXHP_CODE_FREEZE;
+    if (st & BOXHP_ST_PARALYSIS) return BOXHP_CODE_PARALYSIS;
+    if (st & BOXHP_ST_SLEEP_MASK) return BOXHP_CODE_SLEEP;
+    return BOXHP_CODE_NONE;
 }
 
 static u32 BoxHp_DecodeStatus(u32 code)
 {
     switch (code) {
-    case 1: return 2; // sleep: the turn counter is lost, so a fixed one is used
-    case 2: return BOXHP_ST_POISON;
-    case 3: return BOXHP_ST_BURN;
-    case 4: return BOXHP_ST_FREEZE;
-    case 5: return BOXHP_ST_PARALYSIS;
+    case BOXHP_CODE_SLEEP: return BOXHP_SLEEP_TURNS;
+    case BOXHP_CODE_POISON: return BOXHP_ST_POISON;
+    case BOXHP_CODE_BURN: return BOXHP_ST_BURN;
+    case BOXHP_CODE_FREEZE: return BOXHP_ST_FREEZE;
+    case BOXHP_CODE_PARALYSIS: return BOXHP_ST_PARALYSIS;
     default: return 0;
     }
 }
@@ -521,42 +566,49 @@ static u32 BoxHp_DecodeStatus(u32 code)
 static void BoxHp_Stamp(struct PartyPokemon *mon)
 {
     struct BoxPokemon *box = (struct BoxPokemon *)mon;
-    u32 hp = GetMonData(mon, MON_DATA_HP, NULL);
-    u32 maxHp = GetMonData(mon, MON_DATA_MAXHP, NULL);
-    u32 st = GetMonData(mon, MON_DATA_STATUS, NULL);
-    u32 loss = (maxHp > hp) ? (maxHp - hp) : 0;
+    u32 hp, maxHp, loss;
 
+    if (GetMonData(mon, MON_DATA_IS_EGG, NULL)) {
+        box->Unused = 0; // eggs have no meaningful HP
+        return;
+    }
+
+    hp = GetMonData(mon, MON_DATA_HP, NULL);
+    maxHp = GetMonData(mon, MON_DATA_MAXHP, NULL);
+    loss = (maxHp > hp) ? (maxHp - hp) : 0;
     if (loss > BOXHP_LOSS_MASK) {
         loss = BOXHP_LOSS_MASK;
     }
-    box->Unused = loss | (BoxHp_EncodeStatus(st) << BOXHP_LOSS_BITS);
+    box->Unused = loss | (BoxHp_EncodeStatus(GetMonData(mon, MON_DATA_STATUS, NULL)) << BOXHP_LOSS_BITS);
 }
 
-// Must run after CopyBoxPokemonToPokemon, which recalculates stats and resets HP/status
+// Must run after the stats were recalculated, which resets HP/status
 static void BoxHp_Apply(struct PartyPokemon *mon)
 {
-    struct BoxPokemon *box = (struct BoxPokemon *)mon;
-    u32 packed = box->Unused;
+    u32 packed = ((struct BoxPokemon *)mon)->Unused;
+    u32 code = packed >> BOXHP_LOSS_BITS;
     u32 loss, maxHp, st;
     u16 hp;
 
-    if (packed == 0) {
-        return; // nothing stored: leave the Pokemon fully healed
+    if (packed == 0 || code > BOXHP_CODE_PARALYSIS) {
+        return; // nothing stored (or garbage from outside the game): leave the Pokemon fully healed
     }
     loss = packed & BOXHP_LOSS_MASK;
     maxHp = GetMonData(mon, MON_DATA_MAXHP, NULL);
     hp = (loss >= maxHp) ? 0 : (maxHp - loss);
-    st = BoxHp_DecodeStatus(packed >> BOXHP_LOSS_BITS);
+    st = BoxHp_DecodeStatus(code);
     SetMonData(mon, MON_DATA_HP, &hp);
     SetMonData(mon, MON_DATA_STATUS, &st);
 }
 
-// Clears the stamp: used by withdraw and swap, so a stale value can't come back at the next deposit.
+// A party Pokemon never carries a stamp: it would come back at the next deposit, in the daycare or in a trade.
 static void BoxHp_Clear(struct PartyPokemon *mon)
 {
     ((struct BoxPokemon *)mon)->Unused = 0;
 }
 
+// Replaces CopyBoxPokemonToPokemon (hooked at its entry): every box -> party conversion
+// restores the stored HP and status. The source box Pokemon is never modified.
 void LONG_CALL CopyBoxPokemonToPokemon_Detached(const struct BoxPokemon *src, struct PartyPokemon *dest)
 {
     u32 zero = 0;
@@ -572,61 +624,54 @@ void LONG_CALL CopyBoxPokemonToPokemon_Detached(const struct BoxPokemon *src, st
     SetMonData(dest, MON_DATA_HP, &zero);
     SetMonData(dest, MON_DATA_MAXHP, &zero);
 
-    MI_CpuClearFast(&mail, sizeof(mail));          // see mail caveat below
+    MI_CpuClearFast(&mail, sizeof(mail)); // the original uses an initialized Mail: zeroed is assumed equivalent
     SetMonData(dest, MON_DATA_MAIL_STRUCT, &mail);
 
     SetMonData(dest, MON_DATA_CAPSULE, &zero);
     MI_CpuClearFast(&seals, sizeof(seals));
     SetMonData(dest, MON_DATA_SEAL_COORDS, &seals);
 
-    RecalcPartyPokemonStats(dest);   // sets HP to full, as the original does
+    RecalcPartyPokemonStats(dest); // sets HP to full, as the original does
 
-    BoxHp_Apply(dest);               // stamp -> damaged HP and status
-    BoxHp_Clear(dest);               // the party mon carries no stamp
+    BoxHp_Apply(dest);
+    BoxHp_Clear(dest);
 }
+
+static void PCUi_RefreshBox(PCUiCtx *ctx)
+{
+    ov14_021F4958(ctx, ctx->boxno);
+    ov14_021F4A20(ctx, ctx->boxno);
+}
+
 // Deposit: party -> box
 void LONG_CALL ov14_021E61BC_Detached(PCUiCtx *ctx, PCUiMove *mv)
 {
     u8 zero = 0;
-    struct PartyPokemon *mon = Party_GetMonByIndex(ctx->party, mv->srcSlot - 0x1E);
+    struct PartyPokemon *mon = Party_GetMonByIndex(ctx->party, mv->srcSlot - PC_UI_PARTY_SLOT_BASE);
 
     SetMonData(mon, MON_DATA_MOOD, &zero);
     BoxHp_Stamp(mon);
     PCStorage_PlaceMonInBoxByIndexPair(ctx->storage, ctx->boxno, mv->dstSlot, (struct BoxPokemon *)mon);
     ov14_021E6100(ctx, ctx->boxno, mv->srcSlot);
-    ov14_021F4958(ctx, ctx->boxno);
-    ov14_021F4A20(ctx, ctx->boxno);
+    PCUi_RefreshBox(ctx);
 }
 
-// Withdraw: box -> party
-void LONG_CALL ov14_021E6184_Detached(PCUiCtx *ctx, PCUiMove *mv)
-{
-    struct BoxPokemon *src = ov14_021E60C0(ctx, ctx->boxno, mv->srcSlot);
+// Withdraw (ov14_021E6184) is not replaced: the original calls CopyBoxPokemonToPokemon, hooked above.
 
-    CopyBoxPokemonToPokemon(src, mv->mon);
-    BoxHp_Apply(mv->mon);
-    Party_AddMon(ctx->party, mv->mon);
-    ov14_021E6100(ctx, ctx->boxno, mv->srcSlot);
-    ov14_021F4958(ctx, ctx->boxno);
-    ov14_021F4A20(ctx, ctx->boxno);
-}
-
-// Swap: party <-> box
-void LONG_CALL ov14_021E611C_Detached(PCUiCtx *ctx, PCUiMove *a, PCUiMove *b)
+// Swap: party <-> box. The first argument is the box side, the second one the party side.
+void LONG_CALL ov14_021E611C_Detached(PCUiCtx *ctx, PCUiMove *boxMove, PCUiMove *partyMove)
 {
     u8 zero = 0;
-    u32 partyIdx = b->srcSlot - 0x1E;
-    struct BoxPokemon *src = ov14_021E60C0(ctx, ctx->boxno, a->srcSlot);
+    u32 partyIdx = partyMove->srcSlot - PC_UI_PARTY_SLOT_BASE;
+    struct BoxPokemon *src = ov14_021E60C0(ctx, ctx->boxno, boxMove->srcSlot);
 
-    CopyBoxPokemonToPokemon(src, a->mon);
-    BoxHp_Apply(a->mon);
-    CopyPokemonToPokemon(Party_GetMonByIndex(ctx->party, partyIdx), b->mon);
-    SetMonData(b->mon, MON_DATA_MOOD, &zero);
-    BoxHp_Stamp(b->mon);
-    Party_SafeCopyMonToSlot_ResetAprijuiceModifiers(ctx->party, partyIdx, a->mon);
-    PCStorage_PlaceMonInBoxByIndexPair(ctx->storage, ctx->boxno, b->dstSlot, (struct BoxPokemon *)b->mon);
-    ov14_021F4958(ctx, ctx->boxno);
-    ov14_021F4A20(ctx, ctx->boxno);
+    CopyBoxPokemonToPokemon(src, boxMove->mon); // hooked: applies the stored HP and status
+    CopyPokemonToPokemon(Party_GetMonByIndex(ctx->party, partyIdx), partyMove->mon);
+    SetMonData(partyMove->mon, MON_DATA_MOOD, &zero);
+    BoxHp_Stamp(partyMove->mon);
+    Party_SafeCopyMonToSlot_ResetAprijuiceModifiers(ctx->party, partyIdx, boxMove->mon);
+    PCStorage_PlaceMonInBoxByIndexPair(ctx->storage, ctx->boxno, partyMove->dstSlot, (struct BoxPokemon *)partyMove->mon);
+    PCUi_RefreshBox(ctx);
 }
 
 #endif
