@@ -533,7 +533,7 @@ static void BoxHp_Stamp(struct PartyPokemon *mon)
 }
 
 // Must run after CopyBoxPokemonToPokemon, which recalculates stats and resets HP/status
-static void BoxHp_Restore(struct PartyPokemon *mon)
+static void BoxHp_Apply(struct PartyPokemon *mon)
 {
     struct BoxPokemon *box = (struct BoxPokemon *)mon;
     u32 packed = box->Unused;
@@ -549,9 +549,41 @@ static void BoxHp_Restore(struct PartyPokemon *mon)
     st = BoxHp_DecodeStatus(packed >> BOXHP_LOSS_BITS);
     SetMonData(mon, MON_DATA_HP, &hp);
     SetMonData(mon, MON_DATA_STATUS, &st);
-    box->Unused = 0; // clear so the stored state can never go stale
 }
 
+// Clears the stamp: used by withdraw and swap, so a stale value can't come back at the next deposit.
+static void BoxHp_Clear(struct PartyPokemon *mon)
+{
+    ((struct BoxPokemon *)mon)->Unused = 0;
+}
+
+void LONG_CALL CopyBoxPokemonToPokemon_Detached(const struct BoxPokemon *src, struct PartyPokemon *dest)
+{
+    u32 zero = 0;
+    CAPSULE seals;
+    struct Mail mail;
+
+    dest->box = *src;
+    if (dest->box.box_lock) {
+        dest->box.party_lock = TRUE;
+    }
+
+    SetMonData(dest, MON_DATA_STATUS, &zero);
+    SetMonData(dest, MON_DATA_HP, &zero);
+    SetMonData(dest, MON_DATA_MAXHP, &zero);
+
+    MI_CpuClearFast(&mail, sizeof(mail));          // see mail caveat below
+    SetMonData(dest, MON_DATA_MAIL_STRUCT, &mail);
+
+    SetMonData(dest, MON_DATA_CAPSULE, &zero);
+    MI_CpuClearFast(&seals, sizeof(seals));
+    SetMonData(dest, MON_DATA_SEAL_COORDS, &seals);
+
+    RecalcPartyPokemonStats(dest);   // sets HP to full, as the original does
+
+    BoxHp_Apply(dest);               // stamp -> damaged HP and status
+    BoxHp_Clear(dest);               // the party mon carries no stamp
+}
 // Deposit: party -> box
 void LONG_CALL ov14_021E61BC_Detached(PCUiCtx *ctx, PCUiMove *mv)
 {
@@ -572,14 +604,14 @@ void LONG_CALL ov14_021E6184_Detached(PCUiCtx *ctx, PCUiMove *mv)
     struct BoxPokemon *src = ov14_021E60C0(ctx, ctx->boxno, mv->srcSlot);
 
     CopyBoxPokemonToPokemon(src, mv->mon);
-    BoxHp_Restore(mv->mon);
+    BoxHp_Apply(mv->mon);
     Party_AddMon(ctx->party, mv->mon);
     ov14_021E6100(ctx, ctx->boxno, mv->srcSlot);
     ov14_021F4958(ctx, ctx->boxno);
     ov14_021F4A20(ctx, ctx->boxno);
 }
 
-// Swap: party <-> box (TEMP: exact vanilla port, no HP code)
+// Swap: party <-> box
 void LONG_CALL ov14_021E611C_Detached(PCUiCtx *ctx, PCUiMove *a, PCUiMove *b)
 {
     u8 zero = 0;
@@ -587,8 +619,10 @@ void LONG_CALL ov14_021E611C_Detached(PCUiCtx *ctx, PCUiMove *a, PCUiMove *b)
     struct BoxPokemon *src = ov14_021E60C0(ctx, ctx->boxno, a->srcSlot);
 
     CopyBoxPokemonToPokemon(src, a->mon);
+    BoxHp_Apply(a->mon);
     CopyPokemonToPokemon(Party_GetMonByIndex(ctx->party, partyIdx), b->mon);
     SetMonData(b->mon, MON_DATA_MOOD, &zero);
+    BoxHp_Stamp(b->mon);
     Party_SafeCopyMonToSlot_ResetAprijuiceModifiers(ctx->party, partyIdx, a->mon);
     PCStorage_PlaceMonInBoxByIndexPair(ctx->storage, ctx->boxno, b->dstSlot, (struct BoxPokemon *)b->mon);
     ov14_021F4958(ctx, ctx->boxno);

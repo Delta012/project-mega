@@ -680,5 +680,5 @@ arm9 Field_GetHour_Detached 02055618 1
 # heal boxed pokémon at the pokémon center
 arm9 ScrCmd_HealParty_Detached 02044628 1
 0014 ov14_021E61BC_Detached 021E61BC 2
-0014 ov14_021E6184_Detached 021E6184 2
-0014 ov14_021E611C_Detached 021E611C 2
+0014 ov14_021E611C_Detached 021E611C 3
+arm9 CopyBoxPokemonToPokemon_Detached 02071780 2
