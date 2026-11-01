@@ -6,7 +6,7 @@
 #include "system.h"
 
 // ============================================================================================================
-// DETACHED IN-GAME CLOCK
+// IN-GAME CLOCK
 //
 // In the vanilla game the time of day follows the real time of your DS.
 // Here the game has its own clock instead: it only moves while you are playing (like the newest games).
@@ -467,7 +467,7 @@ static void GetGameTime(struct RTCTime *time)
 // Gives the hour, minute and second. Used by wild encounters, evolutions, music and Gracidea.
 // The game's code only knows the vanilla hours, so this is the time of the season moved onto them (see GetEngineSecondOfDay).
 // The time the player sees is in GetGameTime.
-void LONG_CALL GF_RTC_CopyTime_Detached(struct RTCTime *time)
+void LONG_CALL PM_GF_RTC_CopyTime(struct RTCTime *time)
 {
     u32 engineSecond = GetEngineSecondOfDay();
 
@@ -476,15 +476,15 @@ void LONG_CALL GF_RTC_CopyTime_Detached(struct RTCTime *time)
     time->second = engineSecond % 60;
 }
 
-// Gives the second of the day. Used by the colors (tint) of the map. Same time as GF_RTC_CopyTime_Detached.
-s32 LONG_CALL GF_RTC_TimeToSec_Detached(void)
+// Gives the second of the day. Used by the colors (tint) of the map. Same time as PM_GF_RTC_CopyTime.
+s32 LONG_CALL PM_GF_RTC_TimeToSec(void)
 {
     return (s32)GetEngineSecondOfDay();
 }
 
 // Tells if it is night right now, using the hours of the season of the loop.
 // Use it when the code must not depend on the vanilla hours (for example Shaymin's Sky Forme).
-BOOL LONG_CALL GameClock_IsNight_Detached(void)
+BOOL LONG_CALL PM_GameClock_IsNight(void)
 {
     u32 gameSecond = GetGameSecondOfDay();
     const u8 *hours = sSeasonStartHours[sLoopSeason];
@@ -494,21 +494,21 @@ BOOL LONG_CALL GameClock_IsNight_Detached(void)
 
 // Gives morning / day / evening / night. Used by battle backgrounds, the GetTimeOfDay script command and NPC trades.
 // The vanilla function is fine: it already asks GF_RTC_CopyTime, which is the game clock now (with the hours of the season).
-TIMEOFDAY LONG_CALL Field_GetTimeOfDay_Detached(void *fieldSystem)
+TIMEOFDAY LONG_CALL PM_Field_GetTimeOfDay(void *fieldSystem)
 {
     (void)fieldSystem;
     return GF_RTC_GetTimeOfDay();
 }
 
 // Gives the time of day for wild Pokemon. Used by NPC rematches.
-TimeOfDayWildParam LONG_CALL Field_GetTimeOfDayWildParam_Detached(void *fieldSystem)
+TimeOfDayWildParam LONG_CALL PM_Field_GetTimeOfDayWildParam(void *fieldSystem)
 {
     (void)fieldSystem;
     return GF_RTC_GetTimeOfDayWildParam();
 }
 
-// Gives only the hour (the one the game's code sees, like GF_RTC_CopyTime_Detached).
-u32 LONG_CALL Field_GetHour_Detached(void *fieldSystem)
+// Gives only the hour (the one the game's code sees, like PM_GF_RTC_CopyTime).
+u32 LONG_CALL PM_Field_GetHour(void *fieldSystem)
 {
     (void)fieldSystem;
     return GetEngineSecondOfDay() / 3600;
@@ -516,7 +516,7 @@ u32 LONG_CALL Field_GetHour_Detached(void *fieldSystem)
 
 // Replaces the vanilla daily apricorn regrow (sub_020556B8). It does nothing on purpose:
 // the trees now grow back by game days (see UpdateApricornTrees), not by real days.
-void LONG_CALL Field_RegrowApricornTrees_Detached(void *fieldSystem)
+void LONG_CALL PM_Field_RegrowApricornTrees(void *fieldSystem)
 {
     (void)fieldSystem;
 }
@@ -568,7 +568,7 @@ static void GrowSingleBerryPot(BerryPot *pot, const struct BerryGrowthProperties
 }
 
 // Replaces the vanilla berry growth update (ov17_022037C8)
-void LONG_CALL BerryPots_UpdateGrowth_Detached(struct BerryPotsAppDataHead *data, BOOL a1)
+void LONG_CALL PM_BerryPots_UpdateGrowth(struct BerryPotsAppDataHead *data, BOOL a1)
 {
     const struct BerryGrowthProperties *props = (const struct BerryGrowthProperties *)data->berryGrowthProperties;
     u32 berryClock;
@@ -651,7 +651,7 @@ CLOCK_STATIC_ASSERT(PokegearSpriteAddressSet, ManagedSprite_SetAnimationFrame_AD
 #define POKEGEAR_UI_SPRITES_OFFSET        0x98  // List of 11 sprites. Number 4 = weekday, numbers 5 to 8 = the 4 digits (HH:MM)
 
 // Replaces PokegearApp_UpdateClockSprites. Returns TRUE if the clock was redrawn.
-BOOL LONG_CALL PokegearApp_UpdateClockSprites_Detached(void *pokegearApp, BOOL force)
+BOOL LONG_CALL PM_PokegearApp_UpdateClockSprites(void *pokegearApp, BOOL force)
 {
     u8 *app = (u8 *)pokegearApp;
     struct RTCTime *lastTime = (struct RTCTime *)(app + POKEGEAR_TIME_OFFSET);
@@ -791,7 +791,7 @@ static u8 GetScheduledShow(const struct RadioSlot *list, u32 count, u32 week, u3
 
 // Replaces the vanilla RadioShow_TranslateStationID.
 // The radio asks: "which show should play on dial position X (0 - 7)?" This function answers.
-u8 LONG_CALL RadioShow_TranslateStationID_Detached(void *radioShow, int station)
+u8 LONG_CALL PM_RadioShow_TranslateStationID(void *radioShow, int station)
 {
     u8 *radio = (u8 *)radioShow;
     struct RTCDate *date = (struct RTCDate *)(radio + RADIO_DATE_OFFSET);

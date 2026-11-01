@@ -666,13 +666,13 @@ arm9 EncounterSlot_WildMonSlotRoll_Headbutt 022477C0 0
 
 arm9 FieldSystem_RestoreMapObjectsFromSave 0203B9F4 1
 
-# detached in-game clock
-arm9 GF_RTC_CopyTime_Detached 0201474C
-arm9 GF_RTC_TimeToSec_Detached 020147A4 0
-arm9 Field_GetTimeOfDay_Detached 020555E0 1
-arm9 Field_GetTimeOfDayWildParam_Detached 020555F0 1
-arm9 Field_RegrowApricornTrees_Detached 020556B8 1
-0017 BerryPots_UpdateGrowth_Detached 022037C8 2
-arm9 Field_GetHour_Detached 02055618 1
-0101 RadioShow_TranslateStationID_Detached 021F58E0 2
-0100 PokegearApp_UpdateClockSprites_Detached 021E5BB0 2
+# in-game clock
+arm9 PM_GF_RTC_CopyTime 0201474C
+arm9 PM_GF_RTC_TimeToSec 020147A4 0
+arm9 PM_Field_GetTimeOfDay 020555E0 1
+arm9 PM_Field_GetTimeOfDayWildParam 020555F0 1
+arm9 PM_Field_RegrowApricornTrees 020556B8 1
+0017 PM_BerryPots_UpdateGrowth 022037C8 2
+arm9 PM_Field_GetHour 02055618 1
+0101 PM_RadioShow_TranslateStationID 021F58E0 2
+0100 PM_PokegearApp_UpdateClockSprites 021E5BB0 2

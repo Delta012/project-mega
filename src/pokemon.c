@@ -917,8 +917,8 @@ BOOL LONG_CALL Party_UpdateDeerlingSeasonForm(struct Party *party)
     return ret;
 }
 
-// Defined in detached_in_game_clock.c
-BOOL LONG_CALL GameClock_IsNight_Detached(void);
+// Defined in igc.c
+BOOL LONG_CALL PM_GameClock_IsNight(void);
 /**
  *  @brief function that attempts to reset shaymin from sky form when it's night in-game
  *         expanded to allow for deerling forms to update when season changes
@@ -935,7 +935,7 @@ BOOL LONG_CALL Party_TryResetShaymin(struct Party *party, int min_max UNUSED, co
     ret = Party_UpdateDeerlingSeasonForm(party);
 
     // shaymin handling from pokeheartgold, using the in-game night of the current season
-    if (GameClock_IsNight_Detached()) {
+    if (PM_GameClock_IsNight()) {
         Party_ResetAllShayminToLandForme(party);
         ret = TRUE;
     }
