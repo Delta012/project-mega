@@ -925,9 +925,13 @@ MapObjectManager_RestoreFromSave = 0x0205E648 | 1;
 Save_MapObjects_Get = 0x0203B9D0 | 1;
 
 CopyPokemonToPokemon = 0x0207188C | 1;
-Party_AddMon = 0x02074524 | 1;
 Party_SafeCopyMonToSlot_ResetAprijuiceModifiers = 0x02074740 | 1;
+Mail_New = 0x0202B0C8 | 1;
+Func_02078068 = 0x02078068 | 1;
 ov14_021E60C0 = 0x021E60C0 | 1;
 ov14_021E6100 = 0x021E6100 | 1;
 ov14_021F4958 = 0x021F4958 | 1;
 ov14_021F4A20 = 0x021F4A20 | 1;
+ov14_021E6070 = 0x021E6070 | 1;
+ov14_021E6464 = 0x021E6464 | 1;
+ov14_021E6480 = 0x021E6480 | 1;

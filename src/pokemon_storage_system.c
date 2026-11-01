@@ -432,10 +432,16 @@ void sub_02074128(PCStorage *storage)
 #ifdef ALLOW_SAVE_CHANGES
 #ifdef EXPAND_PC_BOXES
 
-// Boxed Pokemon keep their HP and status. The state is "stamped" in the 13 spare bits of the BoxPokemon header
-// when a Pokemon is stored (bits 0-9 = HP lost, bits 10-12 = status code) and applied again when it is converted
-// back to a party Pokemon (CopyBoxPokemonToPokemon_Detached: withdraw, swap, summary screen).
+// Boxed Pokemon keep their HP and status.
+//
+// The state is "stamped" in the 13 spare bits of the BoxPokemon header when a Pokemon is stored
+// (bits 0-9 = HP lost, bits 10-12 = status code, code 6 = fainted) and applied again when the box
+// Pokemon is converted to a party Pokemon (CopyBoxPokemonToPokemon_Detached: withdraw, swap, summary).
 // The header is outside the checksum. Only the Nurse clears the stamps (PCStorage_HealAllBoxMons).
+//
+// Hooked functions (see the hooks file): ScrCmd_HealParty_Detached, ov14_021E61BC_Detached (deposit),
+// ov14_021E611C_Detached (swap), CopyBoxPokemonToPokemon_Detached and PCUi_CanMoveSlot_Detached
+// (the guard that stops a fainted boxed Pokemon from replacing your last able one).
 
 static BOOL BoxMon_BytesEqual(const struct BoxPokemon *a, const struct BoxPokemon *b)
 {
@@ -491,7 +497,10 @@ BOOL LONG_CALL ScrCmd_HealParty_Detached(void *ctx)
     return FALSE;
 }
 
-// Layouts reconstructed from the field offsets used by overlay 14
+// ============================================================================================================
+// Overlay 14 (PC app): layouts reconstructed from the field offsets it uses
+// ============================================================================================================
+
 typedef struct PCUiCtx {
     u8 pad0[4];
     PCStorage *storage;     // +0x04
@@ -507,28 +516,48 @@ typedef struct PCUiMove {
 } PCUiMove;
 
 #define PC_UI_PARTY_SLOT_BASE 0x1E // slots >= this value are party slots: party index = slot - 0x1E
+#define PC_UI_TAB_FLAG        0x80 // set in the destination when a Pokemon is dropped on a box tab
 
 #define PC_UI_STATIC_ASSERT(name, cond) typedef char name[(cond) ? 1 : -1]
 PC_UI_STATIC_ASSERT(PCUiCtxBoxnoOffset, __builtin_offsetof(PCUiCtx, boxno) == 0x1F);
 PC_UI_STATIC_ASSERT(PCUiMoveSize, sizeof(PCUiMove) == 12);
+PC_UI_STATIC_ASSERT(MonDataHeldItemId, MON_DATA_HELD_ITEM == 6);
+PC_UI_STATIC_ASSERT(MonDataStatusId, MON_DATA_STATUS == 160);
+PC_UI_STATIC_ASSERT(MonDataCapsuleId, MON_DATA_CAPSULE == 162);
+PC_UI_STATIC_ASSERT(MonDataHpId, MON_DATA_HP == 163);
+PC_UI_STATIC_ASSERT(MonDataMaxHpId, MON_DATA_MAXHP == 164);
+PC_UI_STATIC_ASSERT(MonDataMailId, MON_DATA_MAIL_STRUCT == 170);
+PC_UI_STATIC_ASSERT(MonDataSealsId, MON_DATA_SEAL_COORDS == 171);
+PC_UI_STATIC_ASSERT(CapsuleSize, sizeof(CAPSULE) == 24);
+PC_UI_STATIC_ASSERT(BoxPokemonSize, sizeof(struct BoxPokemon) == 136);
 
-struct BoxPokemon *LONG_CALL ov14_021E60C0(PCUiCtx *ctx, u8 boxno, u32 slot);
-void LONG_CALL ov14_021E6100(PCUiCtx *ctx, u8 boxno, u32 slot);
-void LONG_CALL ov14_021F4958(PCUiCtx *ctx, u8 boxno);
+struct BoxPokemon *LONG_CALL ov14_021E60C0(PCUiCtx *ctx, u8 boxno, u32 slot);               // box Pokemon at a slot
+u32 LONG_CALL ov14_021E6070(PCUiCtx *ctx, u32 slot, int attr, void *ptr);                    // reads one attribute of a UI slot
+u32 LONG_CALL ov14_021E6464(PCUiCtx *ctx, u32 slot);                                         // box number of a tab
+BOOL LONG_CALL ov14_021E6480(PCUiCtx *ctx, u32 partyIdx);                                    // TRUE if the party keeps another able Pokemon
+void LONG_CALL ov14_021E6100(PCUiCtx *ctx, u8 boxno, u32 slot);                              // removes the Pokemon at a slot
+void LONG_CALL ov14_021F4958(PCUiCtx *ctx, u8 boxno);                                        // redraws the box
 void LONG_CALL ov14_021F4A20(PCUiCtx *ctx, u8 boxno);
+u32 LONG_CALL Func_02078068(u32 item);                                                       // 1 = mail item
+struct Mail *LONG_CALL Mail_New(u32 heapId);
 void LONG_CALL CopyPokemonToPokemon(struct PartyPokemon *src, struct PartyPokemon *dest);
 void LONG_CALL Party_SafeCopyMonToSlot_ResetAprijuiceModifiers(struct Party *party, int idx, struct PartyPokemon *mon);
+
+// ============================================================================================================
+// HP / status stamp
+// ============================================================================================================
 
 #define BOXHP_LOSS_BITS 10
 #define BOXHP_LOSS_MASK 0x3FF
 
-// Status codes (3 bits). Anything above BOXHP_CODE_PARALYSIS is not one of our stamps.
+// Status codes (3 bits). Anything above BOXHP_CODE_FAINTED is not one of our stamps.
 #define BOXHP_CODE_NONE      0
 #define BOXHP_CODE_SLEEP     1
 #define BOXHP_CODE_POISON    2 // also used for toxic: the toxic counter doesn't survive outside battle
 #define BOXHP_CODE_BURN      3
 #define BOXHP_CODE_FREEZE    4
 #define BOXHP_CODE_PARALYSIS 5
+#define BOXHP_CODE_FAINTED   6 // HP is 0 (a fainted Pokemon has no status)
 
 // Status bits as listed in the comment above PartyOnlyPokemon (pokemon.h)
 #define BOXHP_ST_SLEEP_MASK 0x07
@@ -562,58 +591,69 @@ static u32 BoxHp_DecodeStatus(u32 code)
     }
 }
 
-// BoxPokemon is the first member of the party Pokemon struct, so a plain cast is enough
+// Writes the HP and status of a party Pokemon in its box header, right before it is stored
 static void BoxHp_Stamp(struct PartyPokemon *mon)
 {
-    struct BoxPokemon *box = (struct BoxPokemon *)mon;
     u32 hp, maxHp, loss;
 
     if (GetMonData(mon, MON_DATA_IS_EGG, NULL)) {
-        box->Unused = 0; // eggs have no meaningful HP
+        mon->box.Unused = 0; // eggs have no meaningful HP
         return;
     }
 
     hp = GetMonData(mon, MON_DATA_HP, NULL);
+    if (hp == 0) {
+        mon->box.Unused = BOXHP_CODE_FAINTED << BOXHP_LOSS_BITS;
+        return;
+    }
+
     maxHp = GetMonData(mon, MON_DATA_MAXHP, NULL);
     loss = (maxHp > hp) ? (maxHp - hp) : 0;
     if (loss > BOXHP_LOSS_MASK) {
         loss = BOXHP_LOSS_MASK;
     }
-    box->Unused = loss | (BoxHp_EncodeStatus(GetMonData(mon, MON_DATA_STATUS, NULL)) << BOXHP_LOSS_BITS);
+    mon->box.Unused = loss | (BoxHp_EncodeStatus(GetMonData(mon, MON_DATA_STATUS, NULL)) << BOXHP_LOSS_BITS);
 }
 
-// Must run after the stats were recalculated, which resets HP/status
+// Gives the stored HP and status back to a party Pokemon built from a box one.
+// Must run after the stats were recalculated, which resets HP and status.
 static void BoxHp_Apply(struct PartyPokemon *mon)
 {
-    u32 packed = ((struct BoxPokemon *)mon)->Unused;
+    u32 packed = mon->box.Unused;
     u32 code = packed >> BOXHP_LOSS_BITS;
-    u32 loss, maxHp, st;
+    u32 st;
     u16 hp;
 
-    if (packed == 0 || code > BOXHP_CODE_PARALYSIS) {
+    if (packed == 0 || code > BOXHP_CODE_FAINTED) {
         return; // nothing stored (or garbage from outside the game): leave the Pokemon fully healed
     }
-    loss = packed & BOXHP_LOSS_MASK;
-    maxHp = GetMonData(mon, MON_DATA_MAXHP, NULL);
-    hp = (loss >= maxHp) ? 0 : (maxHp - loss);
-    st = BoxHp_DecodeStatus(code);
+
+    if (code == BOXHP_CODE_FAINTED) {
+        hp = 0;
+    } else {
+        u32 loss = packed & BOXHP_LOSS_MASK;
+        u32 maxHp = GetMonData(mon, MON_DATA_MAXHP, NULL);
+
+        hp = (loss >= maxHp) ? 0 : (maxHp - loss);
+    }
+    st = (hp == 0) ? 0 : BoxHp_DecodeStatus(code);
     SetMonData(mon, MON_DATA_HP, &hp);
     SetMonData(mon, MON_DATA_STATUS, &st);
 }
 
-// A party Pokemon never carries a stamp: it would come back at the next deposit, in the daycare or in a trade.
-static void BoxHp_Clear(struct PartyPokemon *mon)
+// TRUE if this boxed Pokemon comes out fainted: read straight from its stamp, no temporary Pokemon
+static BOOL BoxHp_IsFainted(const struct BoxPokemon *box)
 {
-    ((struct BoxPokemon *)mon)->Unused = 0;
+    return (box->Unused >> BOXHP_LOSS_BITS) == BOXHP_CODE_FAINTED;
 }
 
-// Replaces CopyBoxPokemonToPokemon (hooked at its entry): every box -> party conversion
-// restores the stored HP and status. The source box Pokemon is never modified.
+// Replaces CopyBoxPokemonToPokemon (hooked at its entry): every box -> party conversion gives back the
+// stored HP and status. The source box Pokemon is never modified.
 void LONG_CALL CopyBoxPokemonToPokemon_Detached(const struct BoxPokemon *src, struct PartyPokemon *dest)
 {
     u32 zero = 0;
     CAPSULE seals;
-    struct Mail mail;
+    struct Mail *mail;
 
     dest->box = *src;
     if (dest->box.box_lock) {
@@ -624,8 +664,9 @@ void LONG_CALL CopyBoxPokemonToPokemon_Detached(const struct BoxPokemon *src, st
     SetMonData(dest, MON_DATA_HP, &zero);
     SetMonData(dest, MON_DATA_MAXHP, &zero);
 
-    MI_CpuClearFast(&mail, sizeof(mail)); // the original uses an initialized Mail: zeroed is assumed equivalent
-    SetMonData(dest, MON_DATA_MAIL_STRUCT, &mail);
+    mail = Mail_New(0); // heap id 0, as the original
+    SetMonData(dest, MON_DATA_MAIL_STRUCT, mail);
+    sys_FreeMemoryEz(mail);
 
     SetMonData(dest, MON_DATA_CAPSULE, &zero);
     MI_CpuClearFast(&seals, sizeof(seals));
@@ -634,7 +675,83 @@ void LONG_CALL CopyBoxPokemonToPokemon_Detached(const struct BoxPokemon *src, st
     RecalcPartyPokemonStats(dest); // sets HP to full, as the original does
 
     BoxHp_Apply(dest);
-    BoxHp_Clear(dest);
+    dest->box.Unused = 0; // a party Pokemon never carries a stamp: it would come back at the next deposit
+}
+
+// ============================================================================================================
+// PC app hooks
+// ============================================================================================================
+
+// TRUE if the Pokemon in this box slot is an egg or comes out fainted
+static BOOL PCUi_BoxSlotIsEggOrFainted(PCUiCtx *ctx, u32 slot)
+{
+    struct BoxPokemon *box;
+
+    if (ov14_021E6070(ctx, slot, MON_DATA_IS_EGG, NULL)) {
+        return TRUE;
+    }
+    box = ov14_021E60C0(ctx, ctx->boxno, slot);
+    return box != NULL
+        && GetBoxMonData(box, MON_DATA_SPECIES_EXISTS, NULL)
+        && BoxHp_IsFainted(box);
+}
+
+// A party Pokemon holding mail or wearing a seal capsule can't be stored
+static BOOL PCUi_PartyMonCanBeStored(struct PartyPokemon *mon)
+{
+    if (Func_02078068((u16)GetMonData(mon, MON_DATA_HELD_ITEM, NULL)) == 1) {
+        return FALSE;
+    }
+    return GetMonData(mon, MON_DATA_CAPSULE, NULL) == 0;
+}
+
+// Replaces the "can this move be done" guard (021E690C). Returns TRUE if the move is allowed.
+// Same logic as the original, plus: a fainted boxed Pokemon counts as an egg when it would replace
+// your last able Pokemon.
+BOOL LONG_CALL PCUi_CanMoveSlot_Detached(PCUiCtx *ctx, u32 from, u32 to)
+{
+    u32 boxVar = ctx->boxno;
+    u32 occupied = 0;
+
+    if (to & PC_UI_TAB_FLAG) { // dropped on a box tab
+        boxVar = ov14_021E6464(ctx, to);
+        if (boxVar == ctx->boxno || PCStorage_CountMonsAndEggsInBox(ctx->storage, boxVar) == MONS_PER_BOX) {
+            return FALSE;
+        }
+        to ^= PC_UI_TAB_FLAG;
+    } else {
+        occupied = ov14_021E6070(ctx, to, MON_DATA_SPECIES_EXISTS, NULL);
+    }
+
+    if (from >= PC_UI_PARTY_SLOT_BASE) { // a party Pokemon is moved
+        if (!ov14_021E6480(ctx, from - PC_UI_PARTY_SLOT_BASE)) {
+            // it is the last able Pokemon: it can only leave if a healthy one takes its place
+            if (!occupied) {
+                if (to < PC_UI_PARTY_SLOT_BASE || boxVar != ctx->boxno) {
+                    return FALSE;
+                }
+            } else if (to < PC_UI_PARTY_SLOT_BASE && PCUi_BoxSlotIsEggOrFainted(ctx, to)) {
+                return FALSE;
+            }
+        }
+        if (to >= PC_UI_PARTY_SLOT_BASE) {
+            return TRUE; // moved inside the party
+        }
+        return PCUi_PartyMonCanBeStored(Party_GetMonByIndex(ctx->party, from - PC_UI_PARTY_SLOT_BASE));
+    }
+
+    // a box Pokemon is moved
+    if (to < PC_UI_PARTY_SLOT_BASE || !occupied) {
+        return TRUE;
+    }
+    // it takes the place of the party Pokemon at "to", which goes to the box
+    if (!PCUi_PartyMonCanBeStored(Party_GetMonByIndex(ctx->party, to - PC_UI_PARTY_SLOT_BASE))) {
+        return FALSE;
+    }
+    if (!PCUi_BoxSlotIsEggOrFainted(ctx, from)) {
+        return TRUE;
+    }
+    return ov14_021E6480(ctx, to - PC_UI_PARTY_SLOT_BASE) != 0; // an egg or a fainted one needs another able Pokemon
 }
 
 static void PCUi_RefreshBox(PCUiCtx *ctx)
@@ -651,7 +768,7 @@ void LONG_CALL ov14_021E61BC_Detached(PCUiCtx *ctx, PCUiMove *mv)
 
     SetMonData(mon, MON_DATA_MOOD, &zero);
     BoxHp_Stamp(mon);
-    PCStorage_PlaceMonInBoxByIndexPair(ctx->storage, ctx->boxno, mv->dstSlot, (struct BoxPokemon *)mon);
+    PCStorage_PlaceMonInBoxByIndexPair(ctx->storage, ctx->boxno, mv->dstSlot, &mon->box);
     ov14_021E6100(ctx, ctx->boxno, mv->srcSlot);
     PCUi_RefreshBox(ctx);
 }
@@ -670,7 +787,7 @@ void LONG_CALL ov14_021E611C_Detached(PCUiCtx *ctx, PCUiMove *boxMove, PCUiMove 
     SetMonData(partyMove->mon, MON_DATA_MOOD, &zero);
     BoxHp_Stamp(partyMove->mon);
     Party_SafeCopyMonToSlot_ResetAprijuiceModifiers(ctx->party, partyIdx, boxMove->mon);
-    PCStorage_PlaceMonInBoxByIndexPair(ctx->storage, ctx->boxno, partyMove->dstSlot, (struct BoxPokemon *)partyMove->mon);
+    PCStorage_PlaceMonInBoxByIndexPair(ctx->storage, ctx->boxno, partyMove->dstSlot, &partyMove->mon->box);
     PCUi_RefreshBox(ctx);
 }
 

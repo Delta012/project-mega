@@ -679,6 +679,7 @@ arm9 Field_GetHour_Detached 02055618 1
 
 # boxed Pokemon don't heal, and keep their HP, PP and status
 arm9 ScrCmd_HealParty_Detached 02044628 1
+arm9 CopyBoxPokemonToPokemon_Detached 02071780 2
+0014 PCUi_CanMoveSlot_Detached 021E690C 3
 0014 ov14_021E61BC_Detached 021E61BC 2
 0014 ov14_021E611C_Detached 021E611C 3
-arm9 CopyBoxPokemonToPokemon_Detached 02071780 2
