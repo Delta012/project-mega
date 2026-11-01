@@ -433,15 +433,6 @@ void sub_02074128(PCStorage *storage)
 #ifdef EXPAND_PC_BOXES
 
 // Boxed Pokemon keep their HP and status.
-//
-// The state is "stamped" in the 13 spare bits of the BoxPokemon header when a Pokemon is stored
-// (bits 0-9 = HP lost, bits 10-12 = status code, code 6 = fainted) and applied again when the box
-// Pokemon is converted to a party Pokemon (CopyBoxPokemonToPokemon_Detached: withdraw, swap, summary).
-// The header is outside the checksum. Only the Nurse clears the stamps (PCStorage_HealAllBoxMons).
-//
-// Hooked functions (see the hooks file): ScrCmd_HealParty_Detached, ov14_021E61BC_Detached (deposit),
-// ov14_021E611C_Detached (swap), CopyBoxPokemonToPokemon_Detached and PCUi_CanMoveSlot_Detached
-// (the guard that stops a fainted boxed Pokemon from replacing your last able one).
 
 static BOOL BoxMon_BytesEqual(const struct BoxPokemon *a, const struct BoxPokemon *b)
 {
@@ -487,7 +478,7 @@ static void PCStorage_HealAllBoxMons(PCStorage *storage)
     }
 }
 
-BOOL LONG_CALL ScrCmd_HealParty_Detached(void *ctx)
+BOOL LONG_CALL ScrCmd_PM_HealParty(void *ctx)
 {
     void *saveData = SaveBlock2_get();
 
@@ -567,7 +558,8 @@ void LONG_CALL Party_SafeCopyMonToSlot_ResetAprijuiceModifiers(struct Party *par
 #define BOXHP_ST_PARALYSIS  (1 << 6)
 #define BOXHP_ST_TOXIC      (1 << 7)
 
-#define BOXHP_SLEEP_TURNS 2 // the sleep counter is lost, so a fixed one is used
+#define BOXHP_SLEEP_MIN_TURNS 1
+#define BOXHP_SLEEP_MAX_TURNS 3
 
 static u32 BoxHp_EncodeStatus(u32 st)
 {
@@ -582,7 +574,8 @@ static u32 BoxHp_EncodeStatus(u32 st)
 static u32 BoxHp_DecodeStatus(u32 code)
 {
     switch (code) {
-    case BOXHP_CODE_SLEEP: return BOXHP_SLEEP_TURNS;
+    case BOXHP_CODE_SLEEP:
+        return BOXHP_SLEEP_MIN_TURNS + gf_rand() % (BOXHP_SLEEP_MAX_TURNS - BOXHP_SLEEP_MIN_TURNS + 1);
     case BOXHP_CODE_POISON: return BOXHP_ST_POISON;
     case BOXHP_CODE_BURN: return BOXHP_ST_BURN;
     case BOXHP_CODE_FREEZE: return BOXHP_ST_FREEZE;
@@ -649,7 +642,7 @@ static BOOL BoxHp_IsFainted(const struct BoxPokemon *box)
 
 // Replaces CopyBoxPokemonToPokemon (hooked at its entry): every box -> party conversion gives back the
 // stored HP and status. The source box Pokemon is never modified.
-void LONG_CALL CopyBoxPokemonToPokemon_Detached(const struct BoxPokemon *src, struct PartyPokemon *dest)
+void LONG_CALL PM_CopyBoxPokemonToPokemon(const struct BoxPokemon *src, struct PartyPokemon *dest)
 {
     u32 zero = 0;
     CAPSULE seals;
@@ -708,7 +701,7 @@ static BOOL PCUi_PartyMonCanBeStored(struct PartyPokemon *mon)
 // Replaces the "can this move be done" guard (021E690C). Returns TRUE if the move is allowed.
 // Same logic as the original, plus: a fainted boxed Pokemon counts as an egg when it would replace
 // your last able Pokemon.
-BOOL LONG_CALL PCUi_CanMoveSlot_Detached(PCUiCtx *ctx, u32 from, u32 to)
+BOOL LONG_CALL PCUi_PM_CanMoveSlot(PCUiCtx *ctx, u32 from, u32 to)
 {
     u32 boxVar = ctx->boxno;
     u32 occupied = 0;
@@ -761,7 +754,7 @@ static void PCUi_RefreshBox(PCUiCtx *ctx)
 }
 
 // Deposit: party -> box
-void LONG_CALL ov14_021E61BC_Detached(PCUiCtx *ctx, PCUiMove *mv)
+void LONG_CALL ov14_PM_021E61BC(PCUiCtx *ctx, PCUiMove *mv)
 {
     u8 zero = 0;
     struct PartyPokemon *mon = Party_GetMonByIndex(ctx->party, mv->srcSlot - PC_UI_PARTY_SLOT_BASE);
@@ -776,7 +769,7 @@ void LONG_CALL ov14_021E61BC_Detached(PCUiCtx *ctx, PCUiMove *mv)
 // Withdraw (ov14_021E6184) is not replaced: the original calls CopyBoxPokemonToPokemon, hooked above.
 
 // Swap: party <-> box. The first argument is the box side, the second one the party side.
-void LONG_CALL ov14_021E611C_Detached(PCUiCtx *ctx, PCUiMove *boxMove, PCUiMove *partyMove)
+void LONG_CALL ov14_PM_021E611C(PCUiCtx *ctx, PCUiMove *boxMove, PCUiMove *partyMove)
 {
     u8 zero = 0;
     u32 partyIdx = partyMove->srcSlot - PC_UI_PARTY_SLOT_BASE;
