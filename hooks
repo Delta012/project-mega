@@ -678,8 +678,13 @@ arm9 Field_GetHour_Detached 02055618 1
 0100 PokegearApp_UpdateClockSprites_Detached 021E5BB0 2
 
 # boxed Pokemon don't heal, and keep their HP, PP and status, needed for portable pc
-arm9 ScrCmd_PM_HealParty 02044628 1
+arm9 PM_ScrCmd_HealParty 02044628 1
 arm9 PM_CopyBoxPokemonToPokemon 02071780 2
-0014 PCUi_PM_CanMoveSlot 021E690C 3
-0014 ov14_PM_021E61BC 021E61BC 2
-0014 ov14_PM_021E611C 021E611C 3
+0014 PM_PCUi_CanMoveSlot 021E690C 3
+0014 PM_ov14_021E61BC 021E61BC 2
+0014 PM_ov14_021E611C 021E611C 3
+arm9 PM_Sys_ApplyButtonMode 0201A5E8 0
+
+# portable pc
+arm9 PM_Field_CanTakeInput      0203E13C 1
+arm9 PM_FieldSystem_CreateTask  020504F0 3

@@ -478,7 +478,7 @@ static void PCStorage_HealAllBoxMons(PCStorage *storage)
     }
 }
 
-BOOL LONG_CALL ScrCmd_PM_HealParty(void *ctx)
+BOOL LONG_CALL PM_ScrCmd_HealParty(void *ctx)
 {
     void *saveData = SaveBlock2_get();
 
@@ -558,8 +558,8 @@ void LONG_CALL Party_SafeCopyMonToSlot_ResetAprijuiceModifiers(struct Party *par
 #define BOXHP_ST_PARALYSIS  (1 << 6)
 #define BOXHP_ST_TOXIC      (1 << 7)
 
-#define BOXHP_SLEEP_MIN_TURNS 1
-#define BOXHP_SLEEP_MAX_TURNS 3
+#define BOXHP_SLEEP_MIN_TURNS 2
+#define BOXHP_SLEEP_MAX_TURNS 4
 
 static u32 BoxHp_EncodeStatus(u32 st)
 {
@@ -701,7 +701,7 @@ static BOOL PCUi_PartyMonCanBeStored(struct PartyPokemon *mon)
 // Replaces the "can this move be done" guard (021E690C). Returns TRUE if the move is allowed.
 // Same logic as the original, plus: a fainted boxed Pokemon counts as an egg when it would replace
 // your last able Pokemon.
-BOOL LONG_CALL PCUi_PM_CanMoveSlot(PCUiCtx *ctx, u32 from, u32 to)
+BOOL LONG_CALL PM_PCUi_CanMoveSlot(PCUiCtx *ctx, u32 from, u32 to)
 {
     u32 boxVar = ctx->boxno;
     u32 occupied = 0;
@@ -754,7 +754,7 @@ static void PCUi_RefreshBox(PCUiCtx *ctx)
 }
 
 // Deposit: party -> box
-void LONG_CALL ov14_PM_021E61BC(PCUiCtx *ctx, PCUiMove *mv)
+void LONG_CALL PM_ov14_021E61BC(PCUiCtx *ctx, PCUiMove *mv)
 {
     u8 zero = 0;
     struct PartyPokemon *mon = Party_GetMonByIndex(ctx->party, mv->srcSlot - PC_UI_PARTY_SLOT_BASE);
@@ -769,7 +769,7 @@ void LONG_CALL ov14_PM_021E61BC(PCUiCtx *ctx, PCUiMove *mv)
 // Withdraw (ov14_021E6184) is not replaced: the original calls CopyBoxPokemonToPokemon, hooked above.
 
 // Swap: party <-> box. The first argument is the box side, the second one the party side.
-void LONG_CALL ov14_PM_021E611C(PCUiCtx *ctx, PCUiMove *boxMove, PCUiMove *partyMove)
+void LONG_CALL PM_ov14_021E611C(PCUiCtx *ctx, PCUiMove *boxMove, PCUiMove *partyMove)
 {
     u8 zero = 0;
     u32 partyIdx = partyMove->srcSlot - PC_UI_PARTY_SLOT_BASE;
@@ -782,6 +782,203 @@ void LONG_CALL ov14_PM_021E611C(PCUiCtx *ctx, PCUiMove *boxMove, PCUiMove *party
     Party_SafeCopyMonToSlot_ResetAprijuiceModifiers(ctx->party, partyIdx, boxMove->mon);
     PCStorage_PlaceMonInBoxByIndexPair(ctx->storage, ctx->boxno, partyMove->dstSlot, &partyMove->mon->box);
     PCUi_RefreshBox(ctx);
+}
+
+#define GSYSTEM_BASE 0x021D110C // key struct: +0x34 button mode, +0x44/+0x48/+0x4C key words
+
+static void ApplyButtonModeToKeys(u32 mode, u32 offset)
+{
+    volatile u32 *keys = (volatile u32 *)(GSYSTEM_BASE + offset);
+    u32 v = *keys;
+
+    if (mode == 1) {
+        if (v & 0x0008) { // START also counts as X
+            *keys = v | 0x0400;
+        }
+    } else {
+        u32 swapped = 0; // X and Y swapped
+        if (v & 0x0400) swapped |= 0x0800;
+        if (v & 0x0800) swapped |= 0x0400;
+        *keys = (v & 0xF3FF) | swapped;
+    }
+}
+
+// Replaces the key remap (arm9 0201A5E8). Modes: 0 normal, 1 START=X, 2 X/Y swapped.
+// Mode 3 (L=A, which also removed L and R) is gone: L stays a plain button.
+void LONG_CALL PM_Sys_ApplyButtonMode(void)
+{
+    u32 mode = *(volatile u32 *)(GSYSTEM_BASE + 0x34);
+
+    if (mode != 1 && mode != 2) {
+        return;
+    }
+    ApplyButtonModeToKeys(mode, 0x48);
+    ApplyButtonModeToKeys(mode, 0x44);
+    ApplyButtonModeToKeys(mode, 0x4C);
+}
+
+// Portable PC: pressing L in the overworld opens the Pokemon Storage System
+//
+// Hooks:  PM_Field_CanTakeInput 0203E13C (1), PM_FieldSystem_CreateTask 020504F0 (3)
+// rom.ld: Lpc_NewTask, Lpc_LaunchPC, Lpc_AfterPC, Lpc_RestoreOverworld
+//         (the rest reuses existing symbols: FieldSystem_ApplicationIsRunning,
+//          sys_AllocMemory, sys_FreeMemoryEz, GF_ASSERT_INTERNAL,
+//          BeginNormalPaletteFade, WIPE_SYS_EndCheck)
+
+#define FLAG_GOT_POKEGEAR 0x9C
+
+// Key struct: +0x44 held keys, +0x48 keys pressed this frame
+#define LPC_SYS_BASE        0x021D110C
+#define LPC_KEYS_HELD       (*(volatile u32 *)(LPC_SYS_BASE + 0x44))
+#define LPC_KEYS_PRESSED    (*(volatile u32 *)(LPC_SYS_BASE + 0x48))
+#define LPC_PAD_L           0x0200
+#define LPC_PAD_X           0x0400
+
+#define LPC_START_MENU_TASK 0x0203BEF1 // Start menu task function (thumb)
+#define LPC_HEAP_ID         11         // HEAP_ID_FIELD2, same heap as the script command
+#define LPC_FADE_HEAP_ID    4          // HEAP_ID_FIELD1
+
+// Start mode of the PC app (operand of ScrCmd_158): 0 = Deposit, 2 = Move Pokemon
+#define LPC_PC_MODE_MOVE_POKEMON 2
+
+// BeginNormalPaletteFade arguments, as used by the FadeScreen script command
+#define LPC_FADE_BOTH_SCREENS 0
+#define LPC_FADE_OUT          0 // FADE_TYPE_BRIGHTNESS_OUT
+#define LPC_FADE_IN           1 // FADE_TYPE_BRIGHTNESS_IN
+#define LPC_FADE_COLOR_BLACK  0
+#define LPC_FADE_STEPS        6
+#define LPC_FADE_FRAMES       1
+
+// FieldSystem offsets
+#define LPC_FIELD_SUB       0x00 // pointer to a struct: +8 input lock
+#define LPC_FIELD_SAVEDATA  0x0C
+#define LPC_FIELD_TASK      0x10 // current task manager (0 = none)
+#define LPC_FIELD_UNK6C     0x6C
+#define LPC_FIELD_PC_ARGS   0x10C // menu input state, passed to the PC app
+
+// TaskManager offsets
+#define LPC_TASK_WORK       0x0C
+#define LPC_TASK_FIELD      0x18
+
+typedef struct PCLaunchArgs { // same layout as PCBoxArgs
+    void *saveData;
+    void *menuInputState;
+    int mode;
+} PCLaunchArgs;
+
+typedef struct PCLaunchWork {
+    PCLaunchArgs args;
+    u32 state;
+} PCLaunchWork;
+
+enum {
+    PC_STATE_FADE_OUT,
+    PC_STATE_FADE_OUT_WAIT,
+    PC_STATE_APP_WAIT,
+    PC_STATE_FADE_IN,
+    PC_STATE_FADE_IN_WAIT,
+};
+
+void *LONG_CALL Lpc_NewTask(void *field, void *func, void *work);
+void LONG_CALL Lpc_LaunchPC(void *field, void *args);
+void LONG_CALL Lpc_AfterPC(void *field);
+void LONG_CALL Lpc_RestoreOverworld(void *taskMan);
+
+BOOL LONG_CALL FieldSystem_ApplicationIsRunning(void *field);
+void LONG_CALL BeginNormalPaletteFade(u32 fadeMode, u32 typeMain, u32 typeSub, u16 color, int steps, int framesPerStep, u32 heapId);
+
+// The portable PC is only available once the player has the PokeGear.
+static BOOL PCLaunch_IsUnlocked(void)
+{
+    return CheckScriptFlag(FLAG_GOT_POKEGEAR);
+}
+
+static void PCLaunch_StartFade(u32 type)
+{
+    BeginNormalPaletteFade(LPC_FADE_BOTH_SCREENS, type, type, LPC_FADE_COLOR_BLACK,
+                           LPC_FADE_STEPS, LPC_FADE_FRAMES, LPC_FADE_HEAP_ID);
+}
+
+// Task function: returns 1 when finished
+static u32 PCLaunchTask(void *taskMan)
+{
+    void *field = *(void **)((u8 *)taskMan + LPC_TASK_FIELD);
+    PCLaunchWork *work = *(PCLaunchWork **)((u8 *)taskMan + LPC_TASK_WORK);
+
+    switch (work->state) {
+    case PC_STATE_FADE_OUT:
+        PCLaunch_StartFade(LPC_FADE_OUT);
+        work->state = PC_STATE_FADE_OUT_WAIT;
+        return 0;
+    case PC_STATE_FADE_OUT_WAIT:
+        if (!WIPE_SYS_EndCheck()) {
+            return 0;
+        }
+        Lpc_LaunchPC(field, &work->args);
+        work->state = PC_STATE_APP_WAIT;
+        return 0;
+    case PC_STATE_APP_WAIT:
+        if (FieldSystem_ApplicationIsRunning(field)) {
+            return 0;
+        }
+        Lpc_AfterPC(field);
+        Lpc_RestoreOverworld(taskMan); // sub-task: this task resumes when it finishes
+        work->state = PC_STATE_FADE_IN;
+        return 0;
+    case PC_STATE_FADE_IN:
+        PCLaunch_StartFade(LPC_FADE_IN);
+        work->state = PC_STATE_FADE_IN_WAIT;
+        return 0;
+    case PC_STATE_FADE_IN_WAIT:
+        if (!WIPE_SYS_EndCheck()) {
+            return 0;
+        }
+        sys_FreeMemoryEz(work);
+        return 1;
+    }
+    return 0;
+}
+
+// Replaces 0203E13C. Same conditions as the original; L is turned into X
+// so the game starts creating the Start menu task, which CreateTask swaps below.
+BOOL LONG_CALL PM_Field_CanTakeInput(void *field)
+{
+    u8 *f = (u8 *)field;
+    u32 *sub = *(u32 **)(f + LPC_FIELD_SUB);
+
+    if (sub[2] != 0 || *(u32 *)(f + LPC_FIELD_UNK6C) == 0 || *(u32 *)(f + LPC_FIELD_TASK) != 0) {
+        return FALSE;
+    }
+    if ((LPC_KEYS_PRESSED & LPC_PAD_L) && PCLaunch_IsUnlocked()) {
+        LPC_KEYS_PRESSED |= LPC_PAD_X;
+        LPC_KEYS_HELD |= LPC_PAD_X;
+    }
+    return TRUE;
+}
+
+// Replaces 020504F0. Same behaviour as the original, except that the Start menu
+// task is replaced by the PC launch task when L is pressed.
+void LONG_CALL PM_FieldSystem_CreateTask(void *field, void *func, void *work)
+{
+    u8 *f = (u8 *)field;
+    u32 *taskSlot = (u32 *)(f + LPC_FIELD_TASK);
+
+    if (*taskSlot != 0) {
+        GF_ASSERT_INTERNAL();
+    }
+
+    if ((LPC_KEYS_PRESSED & LPC_PAD_L) && PCLaunch_IsUnlocked() && (u32)func == LPC_START_MENU_TASK) {
+        PCLaunchWork *w = sys_AllocMemory(LPC_HEAP_ID, sizeof(PCLaunchWork));
+
+        sys_FreeMemoryEz(work); // the Start menu's work block, which won't be used
+        w->args.saveData = *(void **)(f + LPC_FIELD_SAVEDATA);
+        w->args.menuInputState = f + LPC_FIELD_PC_ARGS;
+        w->args.mode = LPC_PC_MODE_MOVE_POKEMON;
+        w->state = PC_STATE_FADE_OUT;
+        func = (void *)PCLaunchTask;
+        work = w;
+    }
+    *taskSlot = (u32)Lpc_NewTask(field, func, work);
 }
 
 #endif

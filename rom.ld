@@ -935,3 +935,7 @@ ov14_021F4A20 = 0x021F4A20 | 1;
 ov14_021E6070 = 0x021E6070 | 1;
 ov14_021E6464 = 0x021E6464 | 1;
 ov14_021E6480 = 0x021E6480 | 1;
+Lpc_NewTask      = 0x020504C0 | 1;
+Lpc_LaunchPC     = 0x0203E868 | 1;
+Lpc_AfterPC      = 0x02093070 | 1;
+Lpc_RestoreOverworld = 0x020552A4 | 1;
