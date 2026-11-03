@@ -9,12 +9,12 @@ _000:
     PrintMessage 214, TAG_NICKNAME, BATTLER_CATEGORY_ATTACKER
     Wait 
     WaitButtonABTime 30
+    PlayMoveAnimation BATTLER_CATEGORY_ATTACKER
+    Wait
     CompareMonDataToValue OPCODE_NEQ, BATTLER_CATEGORY_ATTACKER, BMON_DATA_ABILITY, ABILITY_MEGA_SOL, _Continue
     AbilityPopup BATTLER_CATEGORY_ATTACKER
 
 _Continue:
-    PlayMoveAnimation BATTLER_CATEGORY_ATTACKER
-    Wait
     PrintAttackMessage
     CompareVarToValue OPCODE_EQU, BSCRIPT_VAR_BATTLER_TARGET, BATTLER_NONE, _035
 
@@ -25,4 +25,4 @@ _033:
 
 _035:
     Call BATTLE_SUBSCRIPT_CHARGE_MOVE_CLEANUP
-    End 
+    End

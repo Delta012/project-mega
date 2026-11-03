@@ -686,7 +686,7 @@ static BOOL ExecuteBtlCmd(void *bw, struct BattleStruct *sp, u32 command)
     }
     return NewBattleScriptCmdTable[command - START_OF_NEW_BTL_SCR_CMDS](bw, sp);
 }
-.
+
 static int sDeferredFrom = NO_DEFERRED_SKIP;
 static int sDeferredTo   = NO_DEFERRED_SKIP;
 
