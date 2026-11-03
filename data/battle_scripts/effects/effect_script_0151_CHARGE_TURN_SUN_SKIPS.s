@@ -5,9 +5,6 @@
 
 _000:
     CompareMonDataToValue OPCODE_FLAG_SET, BATTLER_CATEGORY_ATTACKER, BMON_DATA_STATUS2, STATUS2_LOCKED_INTO_MOVE, _033
-    PrintAttackMessage
-    Wait 
-    WaitButtonABTime 30
     // {0} absorbed light!
     PrintMessage 214, TAG_NICKNAME, BATTLER_CATEGORY_ATTACKER
     Wait 
@@ -18,6 +15,7 @@ _000:
 _Continue:
     PlayMoveAnimation BATTLER_CATEGORY_ATTACKER
     Wait
+    PrintAttackMessage
     CompareVarToValue OPCODE_EQU, BSCRIPT_VAR_BATTLER_TARGET, BATTLER_NONE, _035
 
 _033:

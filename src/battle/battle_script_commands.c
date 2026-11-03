@@ -588,6 +588,211 @@ const btl_scr_cmd_func NewBattleScriptCmdTable[] = {
 
 // clang-format on
 
+// Printing text and plays animations at the same time
+// Skips only the "Wait" after text printing and before a move's animation (not WaitButtonABTime)
+// For now, link battles are unaffected
+
+#define BTL_CMD_WAIT                      14
+#define BTL_CMD_WAIT_BUTTON_AB_TIME       30
+#define BTL_CMD_COMPARE_VAR_TO_VALUE      32
+#define BTL_CMD_COMPARE_MON_DATA_TO_VALUE 33
+#define BTL_CMD_UPDATE_VAR                50
+#define BTL_CMD_UPDATE_MON_DATA           52
+#define BTL_CMD_CHECK_ABILITY             55
+#define BTL_CMD_RANDOM                    56
+#define BTL_CMD_UPDATE_MON_DATA_FROM_VAR  58
+#define BTL_CMD_GOTO                      59
+#define BTL_CMD_CHECK_IGNORABLE_ABILITY   161
+#define BTL_CMD_CHECK_SUBSTITUTE          210
+#define BTL_CMD_CHECK_IGNORE_WEATHER      211
+#define BTL_CMD_GOTO_IF_GROUNDED          232
+#define BTL_CMD_GOTO_IF_TERRAIN_OVERLAY   237
+#define BTL_CMD_GOTO_IF_THIRD_TYPE        267
+
+#define MAX_LOOKAHEAD_STEPS               32
+#define NO_DEFERRED_SKIP                  (-1)
+
+static BOOL IsTextCommand(u32 command)
+{
+    switch (command) {
+    case 17: // PrintAttackMessage
+    case 18: // PrintMessage
+    case 19: // PrintGlobalMessage
+    case 20: // PrintBufferedMessage
+    case 22: // BufferLocalMessage
+        return TRUE;
+    default:
+        return FALSE;
+    }
+}
+
+static BOOL IsAnimationCommand(u32 command)
+{
+    switch (command) {
+    case 23: // PlayMoveAnimation
+    case 24: // PlayMoveAnimationOnMons
+    case 69: // PlayBattleAnimation
+    case 70: // PlayBattleAnimationOnMons
+    case 71: // PlayBattleAnimationFromVar
+        return TRUE;
+    default:
+        return FALSE;
+    }
+}
+
+static BOOL IsPureBranchCommand(u32 command)
+{
+    switch (command) {
+    case BTL_CMD_COMPARE_VAR_TO_VALUE:
+    case BTL_CMD_COMPARE_MON_DATA_TO_VALUE:
+    case BTL_CMD_CHECK_ABILITY:
+    case BTL_CMD_GOTO:
+    case BTL_CMD_CHECK_IGNORABLE_ABILITY:
+    case BTL_CMD_CHECK_SUBSTITUTE:
+    case BTL_CMD_CHECK_IGNORE_WEATHER:
+    case BTL_CMD_GOTO_IF_GROUNDED:
+    case BTL_CMD_GOTO_IF_TERRAIN_OVERLAY:
+    case BTL_CMD_GOTO_IF_THIRD_TYPE:
+        return TRUE;
+    default:
+        return FALSE;
+    }
+}
+
+static int GetPauseWords(u32 command)
+{
+    switch (command) {
+    case BTL_CMD_WAIT:                return 1;
+    case BTL_CMD_WAIT_BUTTON_AB_TIME: return 2;
+    default:                          return 0;
+    }
+}
+
+static int GetStateCommandWords(u32 command)
+{
+    switch (command) {
+    case BTL_CMD_UPDATE_VAR:               return 4;
+    case BTL_CMD_UPDATE_MON_DATA:          return 5;
+    case BTL_CMD_RANDOM:                   return 3;
+    case BTL_CMD_UPDATE_MON_DATA_FROM_VAR: return 5;
+    default:                               return 0;
+    }
+}
+
+static BOOL ExecuteBtlCmd(void *bw, struct BattleStruct *sp, u32 command)
+{
+    if (command < START_OF_NEW_BTL_SCR_CMDS) {
+        return BattleScriptCmdTable[command](bw, sp);
+    }
+    return NewBattleScriptCmdTable[command - START_OF_NEW_BTL_SCR_CMDS](bw, sp);
+}
+.
+static int sDeferredFrom = NO_DEFERRED_SKIP;
+static int sDeferredTo   = NO_DEFERRED_SKIP;
+
+static void ApplyDeferredSkip(struct BattleStruct *sp)
+{
+    if (sp->skill_seq_no == sDeferredFrom) {
+        sp->skill_seq_no = sDeferredTo;
+        sDeferredFrom = NO_DEFERRED_SKIP;
+        sDeferredTo = NO_DEFERRED_SKIP;
+    }
+}
+
+static BOOL FindPartner(void *bw, struct BattleStruct *sp, BOOL wantText, int *pauseWords, BOOL *hasPause)
+{
+    int savedSeqNo = sp->skill_seq_no;
+    BOOL leading = TRUE;
+    BOOL found = FALSE;
+    int words;
+    int i;
+
+    *pauseWords = 0;
+    *hasPause = FALSE;
+
+    for (i = 0; i < MAX_LOOKAHEAD_STEPS; i++) {
+        u32 command = sp->SkillSeqWork[sp->skill_seq_no];
+
+        if ((words = GetPauseWords(command)) != 0) {
+            if (!leading) {
+                break;
+            }
+            if (command == BTL_CMD_WAIT_BUTTON_AB_TIME) {
+                *hasPause = TRUE;
+            }
+            sp->skill_seq_no += words;
+            *pauseWords += words;
+            continue;
+        }
+
+        leading = FALSE;
+        if (IsPureBranchCommand(command)) {
+            ExecuteBtlCmd(bw, sp, command);
+        } else if ((words = GetStateCommandWords(command)) != 0) {
+            sp->skill_seq_no += words;
+        } else {
+            found = wantText ? IsTextCommand(command) : IsAnimationCommand(command);
+            break;
+        }
+    }
+
+    sp->skill_seq_no = savedSeqNo;
+    return found;
+}
+
+static void RunPartnerAhead(void *bw, struct BattleStruct *sp, int pauseWords, BOOL wantText)
+{
+    int waitIdx = sp->skill_seq_no;
+    int resumeIdx = waitIdx + pauseWords;
+    int i;
+
+    sp->skill_seq_no = resumeIdx;
+
+    for (i = 0; i < MAX_LOOKAHEAD_STEPS; i++) {
+        u32 command = sp->SkillSeqWork[sp->skill_seq_no];
+        BOOL isPartner = wantText ? IsTextCommand(command) : IsAnimationCommand(command);
+
+        if (!isPartner && !IsPureBranchCommand(command) && GetStateCommandWords(command) == 0) {
+            return;
+        }
+
+        ExecuteBtlCmd(bw, sp, command);
+
+        if (isPartner) {
+            sDeferredFrom = resumeIdx;
+            sDeferredTo = sp->skill_seq_no;
+            sp->skill_seq_no = waitIdx;
+            return;
+        }
+    }
+}
+
+static void SkipWaitBetweenTextAndAnimation(void *bw, struct BattleStruct *sp, u32 command)
+{
+    BOOL isText = IsTextCommand(command);
+    BOOL hasPause;
+    int pauseWords;
+
+    if (!isText && !IsAnimationCommand(command)) {
+        return;
+    }
+    if (GetPauseWords(sp->SkillSeqWork[sp->skill_seq_no]) == 0) {
+        return;
+    }
+    if (BattleTypeGet(bw) & BATTLE_TYPE_LINK) {
+        return;
+    }
+    if (!FindPartner(bw, sp, !isText, &pauseWords, &hasPause)) {
+        return;
+    }
+
+    if (hasPause) {
+        RunPartnerAhead(bw, sp, pauseWords, !isText);
+    } else {
+        IncrementBattleScriptPtr(sp, pauseWords);
+    }
+}
+
 /**
  *  @brief handles all of battle script command execution
  *
@@ -603,6 +808,7 @@ BOOL BattleScriptCommandHandler(void *bw, struct BattleStruct *sp)
     gBattleSystem = bw; // constantly update bw even tho it really only need be done once
 
     do {
+        ApplyDeferredSkip(sp);
         command = sp->SkillSeqWork[sp->skill_seq_no];
 
 #ifdef DEBUG_BATTLE_SCRIPT_COMMANDS
@@ -620,11 +826,9 @@ BOOL BattleScriptCommandHandler(void *bw, struct BattleStruct *sp)
         }
 #endif // DEBUG_BATTLE_SCRIPT_COMMANDS
 
-        if (command < START_OF_NEW_BTL_SCR_CMDS) {
-            ret = BattleScriptCmdTable[command](bw, sp);
-        } else {
-            ret = NewBattleScriptCmdTable[command - START_OF_NEW_BTL_SCR_CMDS](bw, sp);
-        }
+        ret = ExecuteBtlCmd(bw, sp, command);
+
+        SkipWaitBetweenTextAndAnimation(bw, sp, command);
     } while ((sp->battle_progress_flag == 0) && ((BattleTypeGet(bw) & BATTLE_TYPE_LINK) == 0));
 
     sp->battle_progress_flag = 0;
