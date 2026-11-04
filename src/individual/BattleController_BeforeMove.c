@@ -2308,16 +2308,15 @@ BOOL BattleController_CheckChargeMoves(struct BattleSystem *bsys, struct BattleS
     u32 weatherConsideringMegaSol = GetWeather(bsys, ctx, ctx->attack_client);
     u32 weatherIgnoringMegaSol = GetWeather(bsys, ctx, 0xFF);
 
-    // Solar Beam / Solar Blade: the extra charge turn is decided on the turn the move would fire,
-    // with the weather of that moment (weather summoned after the charge turn, or already gone, both count)
     if ((ctx->battlemon[ctx->attack_client].condition2 & STATUS2_LOCKED_INTO_MOVE)
         && moveEffect == MOVE_EFFECT_CHARGE_TURN_SUN_SKIPS
         && ctx->moveConditionsFlags[ctx->attack_client].extraChargeTurn
         && HeldItemHoldEffectGet(ctx, ctx->attack_client) != HOLD_EFFECT_CHARGE_SKIP) {
-        // the extra turn can happen only once: it is used up here, whether the weather asks for it or not
         ctx->moveConditionsFlags[ctx->attack_client].extraChargeTurn = FALSE;
 
-        if ((weatherConsideringMegaSol & (FIELD_CONDITION_SANDSTORM_ALL | FIELD_CONDITION_SNOW_ALL | FIELD_CONDITION_HAIL_ALL))
+        if ((weatherConsideringMegaSol & (FIELD_CONDITION_SANDSTORM_ALL
+                                        | FIELD_CONDITION_SNOW_ALL
+                                        | FIELD_CONDITION_HAIL_ALL))
             && !(weatherConsideringMegaSol & FIELD_CONDITION_SUN_ALL)) {
             LoadBattleSubSeqScript(ctx, ARC_BATTLE_SUB_SEQ, BATTLE_SUBSCRIPT_SUN_SKIPS_CHARGE_TURN);
             ctx->next_server_seq_no = CONTROLLER_COMMAND_25;
