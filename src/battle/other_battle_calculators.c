@@ -177,6 +177,7 @@ const u16 WindMoveTable[] = {
     MOVE_TWISTER,
     MOVE_WHIRLWIND,
     MOVE_WILDBOLT_STORM,
+    MOVE_WIND_MOVE,
 };
 
 // List of multi-strike moves
