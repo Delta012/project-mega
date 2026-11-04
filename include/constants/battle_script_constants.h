@@ -534,15 +534,16 @@
 #define BATTLE_SUBSCRIPT_PASTEL_VEIL                            (525)
 #define BATTLE_SUBSCRIPT_COMATOSE                               (526)
 #define BATTLE_SUBSCRIPT_DOESNT_AFFECT_ALLY_ABILITY             (527)
+#define BATTLE_SUBSCRIPT_TRY_CLEAR_UNNERVE                      (528)
 
-#define MAX_BASE_SUBSCRIPT_NUM 527
+#define MAX_BASE_SUBSCRIPT_NUM 531
 
 // define your custom subscripts below like this
 // #define MOVE_SUBSCRIPT_CUSTOM_1 (MAX_BASE_SUBSCRIPT_NUM + 1)
 
-#define BATTLE_SUBSCRIPT_HANDLE_WIND_TEMPORARY                  (528)
-#define BATTLE_SUBSCRIPT_WIND_ABILITY                           (529)
-#define BATTLE_SUBSCRIPT_WIND_END                               (530)
+#define BATTLE_SUBSCRIPT_HANDLE_WIND_TEMPORARY                  (529)
+#define BATTLE_SUBSCRIPT_WIND_ABILITY                           (530)
+#define BATTLE_SUBSCRIPT_WIND_END                               (531)
 
 // add status effect constants--used in battle effect scripts to queue up a subscript through the table in src/moves.c
 
