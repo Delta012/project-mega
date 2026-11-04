@@ -2275,6 +2275,8 @@ BOOL CheckMoveIsChargeMove(struct BattleStruct *sp, int moveNo)
     case MOVE_EFFECT_CHARGE_TURN_ATK_SP_ATK_SPEED_UP_2:
     case MOVE_EFFECT_CHARGE_TURN_SP_ATK_UP:
     case MOVE_EFFECT_CHARGE_TURN_SP_ATK_UP_RAIN_SKIPS:
+    case MOVE_EFFECT_CHARGE_TURN_BURN_HIT:
+    case MOVE_EFFECT_CHARGE_TURN_PARALYZE_HIT:
         return TRUE;
     }
     return FALSE;

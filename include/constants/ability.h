@@ -335,7 +335,8 @@
 #define ABILITY_AURA_GUARD       319
 #define ABILITY_COCOON           320
 #define ABILITY_BUGIZE           321
+#define ABILITY_WIND_ABILITY     322
 
-#define NUM_ABILITIES ABILITY_BUGIZE + 1
+#define NUM_ABILITIES ABILITY_WIND_ABILITY + 1
 
 #endif

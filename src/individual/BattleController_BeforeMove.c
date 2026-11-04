@@ -2308,18 +2308,24 @@ BOOL BattleController_CheckChargeMoves(struct BattleSystem *bsys, struct BattleS
     u32 weatherConsideringMegaSol = GetWeather(bsys, ctx, ctx->attack_client);
     u32 weatherIgnoringMegaSol = GetWeather(bsys, ctx, 0xFF);
 
-    // Solar Beam / Solar Blade: extra charge turn in Sandstorm and Snow
+    // Solar Beam / Solar Blade: the extra charge turn is decided on the turn the move would fire,
+    // with the weather of that moment (weather summoned after the charge turn, or already gone, both count)
     if ((ctx->battlemon[ctx->attack_client].condition2 & STATUS2_LOCKED_INTO_MOVE)
         && moveEffect == MOVE_EFFECT_CHARGE_TURN_SUN_SKIPS
         && ctx->moveConditionsFlags[ctx->attack_client].extraChargeTurn
         && HeldItemHoldEffectGet(ctx, ctx->attack_client) != HOLD_EFFECT_CHARGE_SKIP) {
+        // the extra turn can happen only once: it is used up here, whether the weather asks for it or not
         ctx->moveConditionsFlags[ctx->attack_client].extraChargeTurn = FALSE;
-        LoadBattleSubSeqScript(ctx, ARC_BATTLE_SUB_SEQ, BATTLE_SUBSCRIPT_SUN_SKIPS_CHARGE_TURN);
-        ctx->next_server_seq_no = CONTROLLER_COMMAND_25;
-        ctx->waza_status_flag |= MOVE_STATUS_NO_MORE_WORK;
-        ctx->wb_seq_no = BEFORE_MOVE_START;
-        ctx->server_seq_no = CONTROLLER_COMMAND_RUN_SCRIPT;
-        return TRUE;
+
+        if ((weatherConsideringMegaSol & (FIELD_CONDITION_SANDSTORM_ALL | FIELD_CONDITION_SNOW_ALL | FIELD_CONDITION_HAIL_ALL))
+            && !(weatherConsideringMegaSol & FIELD_CONDITION_SUN_ALL)) {
+            LoadBattleSubSeqScript(ctx, ARC_BATTLE_SUB_SEQ, BATTLE_SUBSCRIPT_SUN_SKIPS_CHARGE_TURN);
+            ctx->next_server_seq_no = CONTROLLER_COMMAND_25;
+            ctx->waza_status_flag |= MOVE_STATUS_NO_MORE_WORK;
+            ctx->wb_seq_no = BEFORE_MOVE_START;
+            ctx->server_seq_no = CONTROLLER_COMMAND_RUN_SCRIPT;
+            return TRUE;
+        }
     }
 
     if (!(ctx->battlemon[ctx->attack_client].condition2 & STATUS2_LOCKED_INTO_MOVE)) {
@@ -2347,10 +2353,7 @@ BOOL BattleController_CheckChargeMoves(struct BattleSystem *bsys, struct BattleS
                 continueMoveExecution = TRUE;
             } else {
                 ctx->moveConditionsFlags[ctx->attack_client].extraChargeTurn =
-                    ((weatherConsideringMegaSol & (FIELD_CONDITION_SANDSTORM_ALL | FIELD_CONDITION_SNOW_ALL | FIELD_CONDITION_HAIL_ALL))
-                        && HeldItemHoldEffectGet(ctx, ctx->attack_client) != HOLD_EFFECT_CHARGE_SKIP)
-                    ? TRUE
-                    : FALSE;
+                    (HeldItemHoldEffectGet(ctx, ctx->attack_client) != HOLD_EFFECT_CHARGE_SKIP) ? TRUE : FALSE;
                 LoadBattleSubSeqScript(ctx, ARC_BATTLE_SUB_SEQ, BATTLE_SUBSCRIPT_SUN_SKIPS_CHARGE_TURN);
                 needToRunScript = TRUE;
             }
@@ -2380,7 +2383,7 @@ BOOL BattleController_CheckChargeMoves(struct BattleSystem *bsys, struct BattleS
             needToRunScript = TRUE;
             break;
         case MOVE_EFFECT_CHARGE_TURN_SP_ATK_UP_RAIN_SKIPS:
-            if (weatherIgnoringMegaSol & (FIELD_CONDITION_RAIN_ALL | FIELD_CONDITION_WIND_ALL)) {
+            if (weatherConsideringMegaSol & (FIELD_CONDITION_RAIN_ALL | FIELD_CONDITION_WIND_ALL)) {
                 needToRunScript = FALSE;
                 continueMoveExecution = TRUE;
             } else {
@@ -2446,7 +2449,7 @@ BOOL BattleController_CheckPowerHerb(struct BattleSystem *bsys UNUSED, struct Ba
         if ((ctx->battlemon[ctx->attack_client].condition2 & STATUS2_LOCKED_INTO_MOVE) && HeldItemHoldEffectGet(ctx, ctx->attack_client) == HOLD_EFFECT_CHARGE_SKIP) {
             needToRunScript = TRUE;
 
-            if (weatherConsideringMegaSol & FIELD_CONDITION_RAIN_ALL) {
+            if (weatherConsideringMegaSol & (FIELD_CONDITION_RAIN_ALL | FIELD_CONDITION_WIND_ALL)) {
                 needToRunScript = FALSE;
             }
         }
@@ -2461,6 +2464,8 @@ BOOL BattleController_CheckPowerHerb(struct BattleSystem *bsys UNUSED, struct Ba
     case MOVE_EFFECT_CHARGE_TURN_HIGH_CRIT_FLINCH:
     case MOVE_EFFECT_CHARGE_TURN_DEF_UP:
     case MOVE_EFFECT_CHARGE_TURN_SP_ATK_UP:
+    case MOVE_EFFECT_CHARGE_TURN_BURN_HIT:
+    case MOVE_EFFECT_CHARGE_TURN_PARALYZE_HIT:
         if ((ctx->battlemon[ctx->attack_client].condition2 & STATUS2_LOCKED_INTO_MOVE) && HeldItemHoldEffectGet(ctx, ctx->attack_client) == HOLD_EFFECT_CHARGE_SKIP) {
             needToRunScript = TRUE;
         }
@@ -4474,6 +4479,26 @@ BOOL BattleController_CheckMoveFailures4_SingleTarget(struct BattleSystem *bsys 
             || (ctx->field_condition & FIELD_CONDITION_HAIL_ALL)
 #endif
         ) {
+            butItFailedFlag = TRUE;
+        }
+        if ((ctx->field_condition & FIELD_CONDITION_EXTREMELY_HARSH_SUNLIGHT) || (ctx->field_condition & FIELD_CONDITION_HEAVY_RAIN) || (ctx->field_condition & FIELD_CONDITION_STRONG_WINDS)) {
+            BattleController_ResetGeneralMoveFailureFlags(ctx, ctx->attack_client, FALSE);
+            LoadBattleSubSeqScript(ctx, ARC_BATTLE_SUB_SEQ, BATTLE_SUBSCRIPT_USE_WEATHER_MOVE_FAIL);
+            ctx->next_server_seq_no = CONTROLLER_COMMAND_25;
+            ctx->server_seq_no = CONTROLLER_COMMAND_RUN_SCRIPT;
+            ctx->waza_status_flag |= MOVE_STATUS_NO_MORE_WORK;
+            ctx->wb_seq_no = BEFORE_MOVE_START;
+            return TRUE;
+        }
+        break;
+    }
+    case MOVE_WIND_MOVE: {
+        if ((ctx->field_condition & FIELD_CONDITION_RAIN_PERMANENT)
+            || (ctx->field_condition & FIELD_CONDITION_SUN_PERMANENT)
+            || (ctx->field_condition & FIELD_CONDITION_SANDSTORM_PERMANENT)
+            || (ctx->field_condition & FIELD_CONDITION_HAIL_ALL)
+            || (ctx->field_condition & FIELD_CONDITION_SNOW_PERMANENT)
+            || (ctx->field_condition & FIELD_CONDITION_WIND_PERMANENT)) {
             butItFailedFlag = TRUE;
         }
         if ((ctx->field_condition & FIELD_CONDITION_EXTREMELY_HARSH_SUNLIGHT) || (ctx->field_condition & FIELD_CONDITION_HEAVY_RAIN) || (ctx->field_condition & FIELD_CONDITION_STRONG_WINDS)) {

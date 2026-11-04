@@ -10,9 +10,6 @@ _000:
     ToggleVanish BATTLER_CATEGORY_ATTACKER, TRUE
 
 _011:
-    PrintBufferedMessage 
-    Wait 
-    WaitButtonABTime 30
     PlayBattleAnimation BATTLER_CATEGORY_ATTACKER, BATTLE_ANIMATION_HELD_ITEM
     Wait 
     // {0} became fully charged due to its {1}!

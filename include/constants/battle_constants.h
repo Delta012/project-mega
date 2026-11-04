@@ -245,6 +245,7 @@ typedef enum BattleBg {
 #define FIELD_CONDITION_EXTREMELY_HARSH_SUNLIGHT 0x1000000
 #define FIELD_CONDITION_HEAVY_RAIN               0x2000000
 #define FIELD_CONDITION_STRONG_WINDS             0x4000000
+#define FIELD_CONDITION_WIND_PERMANENT           0x10000000
 // Ion Deluge is a strange case, as it is the only field effect that lasts for only a single turn.
 #define FIELD_CONDITION_ION_DELUGE              0x8000000
 #define FIELD_CONDITION_RAIN_ALL                (FIELD_CONDITION_RAIN | FIELD_CONDITION_RAIN_PERMANENT | FIELD_CONDITION_HEAVY_RAIN)

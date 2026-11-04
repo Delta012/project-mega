@@ -385,6 +385,13 @@ int UNUSED SwitchInAbilityCheck(void *bw, struct BattleStruct *sp)
                                 ret = SWITCH_IN_CHECK_MOVE_SCRIPT;
                             }
                             break;
+                        case ABILITY_WIND_ABILITY:
+                            sp->battlemon[client_no].ability_activated_flag = 1;
+                            if ((sp->field_condition & FIELD_CONDITION_WIND) == 0) {
+                                scriptnum = BATTLE_SUBSCRIPT_WIND_ABILITY;
+                                ret = SWITCH_IN_CHECK_MOVE_SCRIPT;
+                            }
+                            break;
                         }
                     }
                     if (ret == SWITCH_IN_CHECK_MOVE_SCRIPT) {
