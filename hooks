@@ -677,3 +677,7 @@ arm9 PM_Field_RegrowApricornTrees 020556B8 1
 arm9 PM_Field_GetHour 02055618 1
 0101 PM_RadioShow_TranslateStationID 021F58E0 2
 0100 PM_PokegearApp_UpdateClockSprites 021E5BB0 2
+
+# overworld encounters
+0001 OwEnc_OnStep 021E7180 3
+0002 OwEnc_Capture 02246F2E 3

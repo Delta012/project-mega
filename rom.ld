@@ -917,3 +917,13 @@ sub_0207294C = 0x0207294C | 1;
 sub_02017068 = 0x02017068 | 1;
 MapObjectManager_RestoreFromSave = 0x0205E648 | 1;
 Save_MapObjects_Get = 0x0203B9D0 | 1;
+
+sub_02050B08                                   = 0x02050B09;
+BattleSetup_Delete                             = 0x02051BF9;
+GetMetatileBehavior                            = 0x02054919;
+PlayerAvatar_GetXCoord                         = 0x0205C67D;
+PlayerAvatar_GetZCoord                         = 0x0205C689;
+GetMonGender                                   = 0x0206FF89;
+FieldSystem_PerformLandOrSurfEncounterCheck    = 0x02246C8D;
+FieldSystem_GetTileEncounterTypeAndRate        = 0x0224762D;
+DeleteMapObject                                = 0x0205E3CC;
