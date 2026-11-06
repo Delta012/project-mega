@@ -679,5 +679,6 @@ arm9 PM_Field_GetHour 02055618 1
 0100 PM_PokegearApp_UpdateClockSprites 021E5BB0 2
 
 # overworld encounters
-0001 OwEnc_OnStep 021E7180 3
-0002 OwEnc_Capture 02246F2E 3
+0001 OwEnc_CheckWildEncounter 021E7114 3
+arm9 OwEnc_Capture            02050B08 3
+arm9 OwEnc_BattleDone         02050724 3
