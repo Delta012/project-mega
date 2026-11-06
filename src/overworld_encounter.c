@@ -31,6 +31,7 @@ int LONG_CALL PlayerAvatar_GetFacingDirection(FIELD_PLAYER_AVATAR *avatar);
 #define OWENC_R_WIN        1
 #define OWENC_R_CAUGHT     4
 #define OWENC_R_FOE_FLED   6
+#define OWENC_FOLLOWER_DIST 1   /* 0 = solo la sua tile; 1 = anche le tile adiacenti (copre il passo in corso) */
 
 #define PAD_KEY_RIGHT_ 0x0010
 #define PAD_KEY_LEFT_  0x0020
@@ -171,11 +172,26 @@ static BOOL OwEnc_BuildObject(FieldSystem *fs, int i){
     return TRUE;
 }
 
+/* followMon e' a 0xE4 in FieldSystem. Layout dal decomp: mapObject al primo campo. */
+static LocalMapObject *OwEnc_FollowerObj(FieldSystem *fs){
+    if (!fs->followMon.active) return NULL;
+    return *(LocalMapObject **)((u8 *)fs + 0xE4);
+}
+static BOOL OwEnc_NearFollower(FieldSystem *fs, int x, int z){
+    LocalMapObject *o = OwEnc_FollowerObj(fs);
+    if (!o) return FALSE;
+    int dx = OwEnc_Abs((int)MapObject_GetCurrentX(o) - x);
+    int dz = OwEnc_Abs((int)MapObject_GetCurrentY(o) - z);   /* "Y" = Z */
+    return dx <= OWENC_FOLLOWER_DIST && dz <= OWENC_FOLLOWER_DIST;
+}
+
 static BOOL OwEnc_IsWalkable(FieldSystem *fs, int x, int z){
     if (x < 0 || z < 0) return FALSE;
+    if (OwEnc_NearFollower(fs, x, z)) return FALSE;
     u8 type, beh = GetMetatileBehaviorAt(fs, x, z);
     return Ow_GetTileEncType(fs, beh, &type) != 0;
 }
+
 /* TRUE se (x,z) e' a meno di OWENC_MIN_DIST tile da un altro Pokemon */
 static BOOL OwEnc_Occupied(int x, int z){
     for (int i = 0; i < OWENC_SLOTS; i++) {
