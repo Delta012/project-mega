@@ -682,3 +682,4 @@ arm9 PM_Field_GetHour 02055618 1
 0001 OwEnc_CheckWildEncounter 021E7114 3
 arm9 OwEnc_Capture            02050B08 3
 arm9 OwEnc_BattleDone         02050724 3
+0001 OwEnc_FrameHook          021E6B9C 3

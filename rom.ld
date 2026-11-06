@@ -924,3 +924,4 @@ GetMonGender                                 = 0x0206FF88 | 1;
 MapObject_Remove                             = 0x0205E3CC | 1;
 FieldSystem_PerformLandOrSurfEncounterCheck  = 0x02246C8C | 1;
 FieldSystem_GetTileEncounterTypeAndRate      = 0x0224762C | 1;
+PlayerAvatar_GetFacingDirection              = 0x0205C654 | 1;
