@@ -239,6 +239,7 @@ void LONG_CALL sub_0205F6AC(LocalMapObject *mapObject, int a1);
 void LONG_CALL MapObject_SetBits(LocalMapObject *mapObject, u32 bits);
 void LONG_CALL MapObject_ClearBits(LocalMapObject *mapObject, u32 bits);
 void LONG_CALL MapObject_SetID(LocalMapObject *mapObject, u32 id);
+u32 LONG_CALL MapObject_GetID(LocalMapObject *mapObject);
 void LONG_CALL MapObject_SetType(LocalMapObject *mapObject, u32 type);
 u32 LONG_CALL MapObject_GetType(LocalMapObject *mapObject, u32 type);
 void LONG_CALL MapObject_SetFlagID(LocalMapObject *mapObject, u32 flagId);
@@ -319,5 +320,13 @@ int LONG_CALL GetPlayerYCoord(FIELD_PLAYER_AVATAR *avatar);
 BOOL MapObject_IsSingleMovementActive(LocalMapObject *obj);
 void MapObject_PauseMovement(LocalMapObject *obj);
 void LONG_CALL MapObjectManager_RestoreFromSave(void *mapObjectManager, SavedMapObject *savedObjects, u32 objectCount);
+void *LONG_CALL MapObjectManager_New(u32 objectCount);
+void LONG_CALL MapObjectManager_SetFieldSystem(void *mapObjectManager, FieldSystem *fieldSystem);
+void LONG_CALL MapObjectManager_SetObjectCount(void *mapObjectManager, u32 objectCount);
+void LONG_CALL MapObjectManager_SetPriority(void *mapObjectManager, u32 priority);
+s32 LONG_CALL MapObjectManager_GetObjectCount(void *mapObjectManager);
+LocalMapObject *LONG_CALL MapObjectManager_GetObjects(void *mapObjectManager);
+BOOL LONG_CALL MapObject_TestFlagsBits(LocalMapObject *object, u32 bits);
+void LONG_CALL SavedMapObject_InitFromLocalMapObject(FieldSystem *fieldSystem, LocalMapObject *localObject, SavedMapObject *savedObject);
 
 #endif // POKEHEARTGOLD_MAP_EVENTS_INTERNAL_H

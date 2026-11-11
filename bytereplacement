@@ -569,3 +569,35 @@ arm9 020701AC 08 E0
 
 # sub_02070854 always call GetMonPicHeightBySpeciesGenderForm
 arm9 020708B0 06 E0
+
+# Overworld Pokemon key tables. ov01_021E64A4 passes 32 to ov01_021F91F8, which forwards it to
+# ov01_021F944C; ov01_021F944C separately passes 8 for the texture and palette tables. The three
+# tables are fixed inline arrays inside the fully packed 0x108-byte window buffer (map_object.h
+# unk1C[0x108], sizeof(MapObjectManager) 0x12c): 48 words in all, from window+0x20 to window+0xE0,
+# where ov01_021F9698 puts the next field. The total cannot be raised, only re-tiled. Our share of
+# each table is (table - game share) and a species is drawn only if it has an entry in all three,
+# so the visible-species limit is the smallest share.
+# Re-tiled to 14 texture at window+0x20, 14 palette at window+0x58 and 20 model at window+0x90.
+# Game share 2 texture, 2 palette and GetCount+3 model (at most 7, our hook caps GetCount at 4)
+# leaves us 12, 12 and 13 entries: 12 species at a time instead of 4. Must match OWENC_MODEL_MAX.
+# Bases are the add r0,#imm8 immediates, init counts the movs, sizes the movs.
+0001 021FA200 20 30
+0001 021FA204 58 30
+0001 021FA1FC 90 30
+0001 021F9B08 0E 22
+0001 021F9C2C 0E 22
+0001 021F9D50 14 22
+0001 021F946C 0E 21
+0001 021E6518 14 21
+# Model-load cap: ov01_021E64A4 passes 10 (movs r4, #0xa) as the cap of ov01_021FA854. ov01_021FA470
+# loads a species only while used < cap, and used is shared with the game's own live models (player,
+# follower and NPCs), so cap 10 leaves us about 4 species on a route. 14 is the largest value the
+# re-tiled regions can hold: 14 texture and 14 palette words, so 12 ours plus 2 for the game.
+0001 021E64FC 0E 24
+# movs r2, #4 is both the texture game share (r2) and the palette game share ([sp,#0x18] in
+# ov01_021F9808), so this one byte shifts both. The game region is written only by the two
+# 0xff-terminated preload loops, so the game share must equal the list length: shrinking the share
+# to 2 requires shrinking both lists to 2 entries, otherwise ov01_021F9B10/ov01_021F9C34 assert.
+0001 021F946A 02 22
+0001 02207268 FF 00 00 00
+0001 02206CF8 FF 00 00 00

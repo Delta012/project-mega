@@ -683,3 +683,8 @@ arm9 PM_Field_GetHour 02055618 1
 arm9 OwEnc_Capture            02050B08 3
 arm9 OwEnc_BattleDone         02050724 3
 0001 OwEnc_FrameHook          021E6B9C 3
+arm9 OwEnc_ManagerInit        0205E0BC 3
+0001 OwEnc_FetchMapObjectsToPreload 021E6644 3
+# r3 is the 4th argument of FieldSystem_SyncMapObjectsToSaveEx, so this hook eats "count":
+# the hooked function must not read it (see OwEnc_SyncToSaveEx in overworld_encounter.c).
+arm9 OwEnc_SyncToSaveEx       0205E5EC 3
