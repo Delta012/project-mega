@@ -1,0 +1,13 @@
+#include "constants/battle_constants.h"
+.include "battle_commands.inc"
+
+.data
+
+_000:
+    UpdateVar OPCODE_FLAG_OFF, BSCRIPT_VAR_FIELD_CONDITION, FIELD_CONDITION_WIND
+    // The winds have dissipated!
+    PrintMessage 1869, TAG_NONE
+    Wait 
+    WaitButtonABTime 30
+    GoToSubscript BATTLE_SUBSCRIPT_SWITCH_IN_ABILITY_CHECK
+    End 

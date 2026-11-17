@@ -14,6 +14,7 @@
 #include "save.h"
 #include "sprite.h"
 #include "task.h"
+#include "window.h"
 
 #define CLIENT_MAX 4
 
@@ -182,7 +183,7 @@
 #define STRUGGLE_CHECK_IMPRISON        (1 << 5)
 #define STRUGGLE_CHECK_GRAVITY         (1 << 6)
 #define STRUGGLE_CHECK_HEAL_BLOCK      (1 << 7)
-#define STRUGGLE_CHECK_ENCORE          (1 << 8) // unused because they straight up forgot
+#define STRUGGLE_CHECK_ENCORE          (1 << 8)
 #define STRUGGLE_CHECK_CHOICED         (1 << 9)
 #define STRUGGLE_CHECK_GORILLA_TACTICS (1 << 10)
 #define STRUGGLE_CHECK_GIGATON_HAMMER  (1 << 11)
@@ -853,6 +854,12 @@ typedef struct SwitchInFlags {
     u8 padding : 4;
 } SwitchInFlags;
 
+typedef struct AbilityProcessingFlags {
+    u8 pendingSymbiosis : 1;
+    u8 symbiosisAlly : 3;
+    u8 boosterEnergyStat : 4;
+} AbilityProcessingFlags;
+
 #define VANILLA_BATTLE_SCRIPT_PUSH_DEPTH 4
 #define BATTLE_SCRIPT_PUSH_DEPTH         8
 
@@ -1094,7 +1101,8 @@ struct BattleStruct {
     u8 futureSightNoAttacker : 1;
     u8 futureSightSTAB : 1;
     u8 ejectPackActivated : 1;
-    u8 gemBoostingMovePadding : 3;
+    u8 moveInProgress : 1;
+    u8 gemBoostingMovePadding : 2;
 
     int currentMoveSwitchStatus;
 
@@ -1107,10 +1115,13 @@ struct BattleStruct {
     MagicBounceContext magicBounceContext;
     HealingWishQueue healingWishQueue;
     SwitchInFlags switchInFlags[CLIENT_MAX];
+    AbilityProcessingFlags abilityProcessingFlags[CLIENT_MAX];
     int field_condition2; // gen5+ field conditions
     int magicRoomCounter;
 
     int recoilDamage;
+    u8 pickpocketBattler;
+    u8 pickpocketAttackerSlot; // account for red card
 };
 
 enum {
@@ -2611,6 +2622,42 @@ BOOL LONG_CALL CheckItemGradualHPRestore(struct BattleSystem *bsys, struct Battl
 BOOL LONG_CALL ov12_02252218(struct BattleStruct *ctx, int battlerId);
 BOOL LONG_CALL TryHeldItemNegativeEffect(struct BattleSystem *bsys, struct BattleStruct *ctx, int battlerId);
 
+typedef struct HealthBox {
+    u8 state;
+    void *mainSprite;
+    void *arrowSprites;
+    struct BattleSystem *battleSys;
+    SysTask *unk10;
+    struct Window unk14;
+    u8 battler;
+    u8 type;
+    u8 selectedPartySlot;
+    u8 numSafariBalls;
+    s32 curHp;
+    s32 maxHp;
+    s32 damage;
+    s32 hpTemp;
+    s32 curExp;
+    s32 maxExp;
+    s32 expReward;
+    s32 expTemp;
+    u8 level;
+    u8 gender;
+    u8 status;
+    u8 caughtSpecies;
+    u8 command;
+    u8 delay;
+    u8 expSoundTimer;
+    u8 scrollDirection : 1;
+    u8 doneScrolling : 1;
+    u8 unused_4F_2 : 1;
+    u8 numberMode : 1;
+    SysTask *bobbingAnimTask;
+    u16 degrees;
+} HealthBox;
+
+void LONG_CALL HealthBox_DrawLevelText(HealthBox *healthBox);
+
 typedef struct ANIM_CMD_STRUCT {
     u8 padding_0[0x18];
     u32 *animScriptPtr;
@@ -2830,6 +2877,7 @@ s32 LONG_CALL GrabClientFromBattleScriptParam(void *bw, struct BattleStruct *sp,
 void LONG_CALL LoadBattleSubSeqScript(struct BattleStruct *sp, int kind, int index);
 /* https://github.com/pret/pokeheartgold/blob/master/src/battle/overlay_12_0224E4FC.c#L202 */
 BOOL LONG_CALL PopBattleScript(struct BattleStruct *sp);
+BOOL LONG_CALL TryActivateSymbiosis(struct BattleSystem *bsys, struct BattleStruct *ctx);
 
 /**
  *  @brief load battle script and queue up the current one to go after this one
@@ -3086,6 +3134,7 @@ BOOL LONG_CALL IsDynamaxBannedWeightMove(u32 moveIndex);
 BOOL LONG_CALL IsBallOrBombMove(u32 moveIndex);
 
 BOOL LONG_CALL IsDanceMove(u32 moveIndex);
+BOOL LONG_CALL IsTriageBoostedMove(u32 moveIndex);
 
 /// @brief Get the priority of the client
 /// @param bsys
@@ -3372,6 +3421,7 @@ void LONG_CALL BattleControllerPlayer_RunInput(struct BattleSystem *bsys, struct
  *  @return move position (if the BattlePokemon has it), 4 if the move is not present
  */
 int LONG_CALL BattleMon_GetMoveIndex(struct BattlePokemon *mon, u16 move);
+BOOL LONG_CALL IsMoveEncored(struct BattleStruct *ctx, u16 moveNo);
 
 BOOL LONG_CALL CheckTruant(struct BattleStruct *ctx, int battlerId);
 
@@ -3385,7 +3435,10 @@ int LONG_CALL Battler_GetRandomOpposingBattlerId(struct BattleSystem *bsys, stru
 
 int LONG_CALL GetBattlerLearnedMoveCount(struct BattleSystem *bsys, struct BattleStruct *ctx, int battlerId);
 
+BOOL LONG_CALL SideSharesParty(struct BattleSystem *bsys, int battler);
+
 BOOL LONG_CALL CanSwitchMon(struct BattleSystem *bsys, struct BattleStruct *ctx, int battlerId);
+BOOL LONG_CALL CanSwitchMonConsideringPendingSwitches(struct BattleSystem *bsys, struct BattleStruct *ctx, int battlerId);
 
 BOOL LONG_CALL BattleSystem_CheckMoveEffect(void *bw, struct BattleStruct *sp, int battlerIdAttacker, int battlerIdTarget, int move);
 
@@ -3404,6 +3457,26 @@ BOOL LONG_CALL RemoveType(struct BattleStruct *ctx, int battlerId, int type);
 
 void LONG_CALL ov12_0224DD74(struct BattleSystem *bsys UNUSED, struct BattleStruct *ctx);
 void LONG_CALL ov12_0224D23C(struct BattleSystem *bsys, struct BattleStruct *ctx);
+void LONG_CALL BattleControllerPlayer_SelectionScreenInput(struct BattleSystem *bsys, struct BattleStruct *ctx);
+BOOL LONG_CALL Battler_CanSelectAction(struct BattleStruct *ctx, int battlerId);
+u8 LONG_CALL ov12_02261264(struct CLIENT_PARAM *opponentData);
+void LONG_CALL BattleController_EmitSetCommandSelectionMenu(struct BattleSystem *bsys, struct BattleStruct *ctx, int battlerId, int selectedMonIndex);
+void LONG_CALL BattleController_EmitStopGaugeAnimation(struct BattleSystem *bsys, int battlerId);
+void LONG_CALL BattleController_EmitShowMoveSelectMenu(struct BattleSystem *bsys, struct BattleStruct *ctx, int battlerId);
+void LONG_CALL ov12_0223BFFC(struct BattleSystem *bsys, int a1);
+void LONG_CALL BattleController_TryEmitExitRecording(struct BattleSystem *bsys, struct BattleStruct *ctx);
+BOOL LONG_CALL ov12_0224DB64(struct BattleSystem *bsys, struct BattleStruct *ctx, u8 battlerId, u32 battleType, int *range, int movePos, u32 *side);
+void LONG_CALL BattleCommand_EmitShowTargetSelectMenu(struct BattleSystem *bsys, struct BattleStruct *ctx, int range, int battlerId);
+void LONG_CALL BattleController_EmitShowBagMenu(struct BattleSystem *bsys, struct BattleStruct *ctx, int battlerId);
+int LONG_CALL BattlerCanSwitch(struct BattleSystem *bsys, struct BattleStruct *ctx, int battlerId);
+int LONG_CALL ov12_0223AB0C(struct BattleSystem *bsys, int battlerId);
+void LONG_CALL BattleController_EmitShowYesNoMenu(struct BattleSystem *bsys, struct BattleStruct *ctx, int battlerId, int msgId, int a4, int a5, int a6);
+void LONG_CALL BattleBuffer_Clear(struct BattleStruct *ctx, int battlerId);
+void LONG_CALL BattleController_EmitClearTouchScreen(struct BattleSystem *bsys, int battlerId);
+void LONG_CALL BattleController_EmitClearMessageBox(struct BattleSystem *bsys);
+void LONG_CALL BattleControllerPlayer_FightInput(struct BattleSystem *bsys, struct BattleStruct *ctx);
+void LONG_CALL ov12_0224E414(struct BattleSystem *bsys, struct BattleStruct *ctx);
+void LONG_CALL ov12_02237ED0(struct BattleSystem *bsys, int a1);
 void LONG_CALL ov12_02256694(struct BattleSystem *bsys, struct BattleStruct *ctx);
 
 u8 LONG_CALL ov12_02261258(struct CLIENT_PARAM *opponentData);
@@ -3866,8 +3939,6 @@ BOOL LONG_CALL IsBattlerOnField(struct BattleStruct *ctx, int battlerId);
 
 BOOL LONG_CALL AnyPendingSwitches(struct BattleSystem *bsys, struct BattleStruct *ctx);
 BOOL LONG_CALL BattlerFirstTurnOut(struct BattleStruct *ctx, int battlerId);
-
-BOOL LONG_CALL CanSwitchMon(struct BattleSystem *bsys, struct BattleStruct *ctx, int battlerId);
 
 void LONG_CALL InitSwitchWork(struct BattleSystem *bsys, struct BattleStruct *ctx, int battlerId);
 void LONG_CALL ov12_02256F78(struct BattleSystem *bsys, struct BattleStruct *ctx, int battlerId, u8 selectedMonIndex);
